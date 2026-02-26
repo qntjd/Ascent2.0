@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProjects, createProject, createInviteCode, joinProject } from '../api/project'
-import type { Project } from '../types'
+import { getMe, updateNickname } from '../api/user'
+import type { Project, User } from '../types'
 import useAuthStore from '../store/authStore'
 
 export default function ProjectListPage() {
@@ -9,12 +10,19 @@ export default function ProjectListPage() {
   const { logout } = useAuthStore()
 
   const [projects, setProjects] = useState<Project[]>([])
+  const [me, setMe] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
   const [showCreate, setShowCreate] = useState(false)
   const [showJoin, setShowJoin] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [inviteCode, setInviteCode] = useState('')
+  const [newNickname, setNewNickname] = useState('')
+  const [nicknameLoading, setNicknameLoading] = useState(false)
+  const [nicknameError, setNicknameError] = useState('')
 
   const fetchProjects = async () => {
     try {
@@ -27,14 +35,26 @@ export default function ProjectListPage() {
     }
   }
 
-  useEffect(() => { fetchProjects() }, [])
+  const fetchMe = async () => {
+    try {
+      const res = await getMe()
+      setMe(res.data)
+      setNewNickname(res.data.nickname)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => {
+    fetchProjects()
+    fetchMe()
+  }, [])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       await createProject(title, description)
-      setShowCreate(false)
-      setTitle(''); setDescription('')
+      setShowCreate(false); setTitle(''); setDescription('')
       fetchProjects()
     } catch { alert('프로젝트 생성 실패') }
   }
@@ -56,17 +76,30 @@ export default function ProjectListPage() {
     } catch { alert('초대 코드 생성 실패 (OWNER만 가능)') }
   }
 
-  const statusColor: Record<string, string> = {
-    OPEN: '#4ade80',
-    CLOSED: '#f87171',
-    ARCHIVED: '#9090a8',
+  const handleUpdateNickname = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setNicknameError('')
+    setNicknameLoading(true)
+    try {
+      const res = await updateNickname(newNickname)
+      setMe(res.data)
+      setShowProfile(false)
+    } catch (err: any) {
+      setNicknameError(err.response?.data?.message || '닉네임 수정 실패')
+    } finally {
+      setNicknameLoading(false)
+    }
   }
 
-  const statusLabel: Record<string, string> = {
-    OPEN: '진행 중',
-    CLOSED: '종료',
-    ARCHIVED: '보관',
+  const avatarColor = (email: string) => {
+    const colors = ['#6c63ff', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ec4899']
+    let hash = 0
+    for (let i = 0; i < email.length; i++) hash = email.charCodeAt(i) + ((hash << 5) - hash)
+    return colors[Math.abs(hash) % colors.length]
   }
+
+  const statusColor: Record<string, string> = { OPEN: '#4ade80', CLOSED: '#f87171', ARCHIVED: '#9090a8' }
+  const statusLabel: Record<string, string> = { OPEN: '진행 중', CLOSED: '종료', ARCHIVED: '보관' }
 
   return (
     <div style={{ minHeight: '100vh', background: '#111827', fontFamily: "'DM Sans', sans-serif", color: '#e8e8f0' }}>
@@ -87,36 +120,29 @@ export default function ProjectListPage() {
         .modal-overlay { animation: fadeIn 0.2s ease; }
         .modal-content { animation: fadeUp 0.25s ease; }
         textarea:focus { border-color: #6c63ff !important; box-shadow: 0 0 0 3px rgba(108,99,255,0.15) !important; outline: none; }
+        .profile-btn:hover { background: rgba(255,255,255,0.06) !important; }
+        .profile-btn { transition: all 0.15s ease; }
       `}</style>
 
       {/* 네비게이션 */}
       <nav style={{
-        background: 'rgba(10,10,15,0.8)',
-        backdropFilter: 'blur(12px)',
+        background: 'rgba(17,24,39,0.9)', backdropFilter: 'blur(12px)',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
-        padding: '0 32px',
-        height: '60px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
+        padding: '0 32px', height: '60px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        position: 'sticky', top: 0, zIndex: 100,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '30px', height: '30px',
             background: 'linear-gradient(135deg, #6c63ff, #63b3ff)',
-            borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="white" />
             </svg>
           </div>
-          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 800, letterSpacing: '-0.5px' }}>
-            Ascent
-          </span>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 800, letterSpacing: '-0.5px' }}>Ascent</span>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -124,33 +150,47 @@ export default function ProjectListPage() {
             padding: '7px 16px', fontSize: '13px', fontWeight: 500,
             background: 'transparent', border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: '8px', color: '#9090a8', cursor: 'pointer',
-          }}>
-            초대 코드 참여
-          </button>
+          }}>초대 코드 참여</button>
+
           <button onClick={() => setShowCreate(true)} className="btn-primary" style={{
             padding: '7px 16px', fontSize: '13px', fontWeight: 600,
             background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
             border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
             boxShadow: '0 4px 12px rgba(108,99,255,0.3)',
-          }}>
-            + 새 프로젝트
-          </button>
+          }}>+ 새 프로젝트</button>
+
+          {/* 프로필 버튼 */}
+          {me && (
+            <button onClick={() => { setShowProfile(true); setNewNickname(me.nickname) }} className="profile-btn" style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '5px 10px 5px 5px', borderRadius: '20px',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              cursor: 'pointer',
+            }}>
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '50%',
+                background: avatarColor(me.email),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '12px', fontWeight: 600, color: 'white',
+              }}>
+                {me.nickname[0].toUpperCase()}
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 500, color: '#d1d5db' }}>{me.nickname}</span>
+            </button>
+          )}
+
           <button onClick={logout} className="btn-ghost" style={{
             padding: '7px 12px', fontSize: '13px',
             background: 'transparent', border: 'none',
             borderRadius: '8px', color: '#6b6b80', cursor: 'pointer',
-          }}>
-            로그아웃
-          </button>
+          }}>로그아웃</button>
         </div>
       </nav>
 
       {/* 메인 */}
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 24px' }}>
         <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', marginBottom: '6px' }}>
-            프로젝트
-          </h1>
+          <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', marginBottom: '6px' }}>프로젝트</h1>
           <p style={{ color: '#6b6b80', fontSize: '14px' }}>
             {projects.length > 0 ? `${projects.length}개의 프로젝트` : '아직 프로젝트가 없어요'}
           </p>
@@ -162,10 +202,7 @@ export default function ProjectListPage() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         ) : projects.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: '80px 24px',
-            border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '16px',
-          }}>
+          <div style={{ textAlign: 'center', padding: '80px 24px', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '16px' }}>
             <div style={{ fontSize: '40px', marginBottom: '16px' }}>🚀</div>
             <p style={{ color: '#6b6b80', fontSize: '15px', marginBottom: '20px' }}>첫 프로젝트를 만들어보세요!</p>
             <button onClick={() => setShowCreate(true)} className="btn-primary" style={{
@@ -173,62 +210,121 @@ export default function ProjectListPage() {
               background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
               border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer',
               boxShadow: '0 4px 12px rgba(108,99,255,0.3)',
-            }}>
-              + 새 프로젝트
-            </button>
+            }}>+ 새 프로젝트</button>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '12px' }}>
             {projects.map((project, i) => (
               <div key={project.id} className="project-card" style={{
-                background: '#1f2937',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '14px',
-                padding: '22px 24px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                animationDelay: `${i * 0.05}s`,
-                opacity: 0,
+                background: '#1f2937', border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '14px', padding: '22px 24px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                animationDelay: `${i * 0.05}s`, opacity: 0,
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                     <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#e8e8f0' }}>{project.title}</h3>
                     <span style={{
-                      fontSize: '11px', fontWeight: 500, padding: '2px 8px',
-                      borderRadius: '20px', background: `${statusColor[project.status]}18`,
-                      color: statusColor[project.status], border: `1px solid ${statusColor[project.status]}30`,
-                    }}>
-                      {statusLabel[project.status]}
-                    </span>
+                      fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px',
+                      background: `${statusColor[project.status]}18`, color: statusColor[project.status],
+                      border: `1px solid ${statusColor[project.status]}30`,
+                    }}>{statusLabel[project.status]}</span>
                   </div>
                   <p style={{ fontSize: '13px', color: '#6b6b80', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '400px' }}>
                     {project.description}
                   </p>
                 </div>
-
                 <div style={{ display: 'flex', gap: '8px', marginLeft: '16px', flexShrink: 0 }}>
                   <button onClick={() => handleInviteCode(project.id)} className="btn-ghost" style={{
                     padding: '7px 14px', fontSize: '12px', fontWeight: 500,
                     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: '8px', color: '#9090a8', cursor: 'pointer',
-                  }}>
-                    초대 코드
-                  </button>
+                  }}>초대 코드</button>
                   <button onClick={() => navigate(`/projects/${project.id}/chat`)} className="btn-primary" style={{
                     padding: '7px 16px', fontSize: '12px', fontWeight: 600,
                     background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
                     border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
                     boxShadow: '0 2px 8px rgba(108,99,255,0.3)',
-                  }}>
-                    채팅방 →
-                  </button>
+                  }}>채팅방 →</button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* 프로필 수정 모달 */}
+      {showProfile && (
+        <div className="modal-overlay" onClick={() => setShowProfile(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+        }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
+            background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '400px', margin: '0 16px',
+          }}>
+            {/* 프로필 상단 */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '28px' }}>
+              <div style={{
+                width: '64px', height: '64px', borderRadius: '50%',
+                background: me ? avatarColor(me.email) : '#6c63ff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '12px',
+              }}>
+                {me?.nickname[0].toUpperCase()}
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b6b80' }}>{me?.email}</p>
+            </div>
+
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.3px' }}>
+              닉네임 수정
+            </h2>
+
+            <form onSubmit={handleUpdateNickname} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#9090a8', marginBottom: '8px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                  새 닉네임
+                </label>
+                <input
+                  type="text" value={newNickname}
+                  onChange={(e) => setNewNickname(e.target.value)}
+                  className="input-field"
+                  placeholder="2~20자"
+                  minLength={2} maxLength={20} required
+                  style={{
+                    width: '100%', padding: '11px 14px',
+                    background: '#111827', border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', transition: 'all 0.2s',
+                  }}
+                />
+              </div>
+
+              {nicknameError && (
+                <div style={{
+                  background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.2)',
+                  borderRadius: '8px', padding: '10px 14px', color: '#ff6b6b', fontSize: '13px',
+                }}>{nicknameError}</div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowProfile(false)} className="btn-ghost" style={{
+                  padding: '9px 18px', fontSize: '13px', background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer',
+                }}>취소</button>
+                <button type="submit" disabled={nicknameLoading} className="btn-primary" style={{
+                  padding: '9px 20px', fontSize: '13px', fontWeight: 600,
+                  background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
+                  border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(108,99,255,0.3)',
+                  opacity: nicknameLoading ? 0.6 : 1,
+                }}>
+                  {nicknameLoading ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 프로젝트 생성 모달 */}
       {showCreate && (
@@ -240,9 +336,7 @@ export default function ProjectListPage() {
             background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '440px', margin: '0 16px',
           }}>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '24px', letterSpacing: '-0.3px' }}>
-              새 프로젝트
-            </h2>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '24px', letterSpacing: '-0.3px' }}>새 프로젝트</h2>
             <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#9090a8', marginBottom: '8px', letterSpacing: '0.3px', textTransform: 'uppercase' }}>제목</label>
@@ -283,9 +377,7 @@ export default function ProjectListPage() {
             background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '440px', margin: '0 16px',
           }}>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '8px', letterSpacing: '-0.3px' }}>
-              초대 코드로 참여
-            </h2>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '20px', fontWeight: 700, marginBottom: '8px', letterSpacing: '-0.3px' }}>초대 코드로 참여</h2>
             <p style={{ color: '#6b6b80', fontSize: '13px', marginBottom: '24px' }}>받은 초대 코드를 입력해 프로젝트에 참여하세요</p>
             <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <input type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} className="input-field"
