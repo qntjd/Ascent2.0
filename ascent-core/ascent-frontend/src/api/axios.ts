@@ -1,13 +1,13 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// 요청 인터셉터 
+// 요청 인터셉터
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken')
   if (token) {
@@ -16,7 +16,7 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// 응답 인터셉터 
+// 응답 인터셉터
 api.interceptors.response.use(
   (response) => response,
   (error) => {

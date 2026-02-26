@@ -38,8 +38,9 @@ export default function ChatPage() {
   }, [projectId])
 
   useEffect(() => {
+    const wsUrl = import.meta.env.VITE_WS_URL || ''
     const client = new Client({
-      webSocketFactory: () => new SockJS('/ws'),
+      webSocketFactory: () => new SockJS(`${wsUrl}/ws`),
       connectHeaders: { Authorization: `Bearer ${accessToken}` },
       onConnect: () => {
         setConnected(true)
@@ -147,7 +148,6 @@ export default function ChatPage() {
           </div>
         </div>
 
-        
         <button onClick={() => setShowSidebar(!showSidebar)} className="toggle-btn" style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           padding: '6px 12px', borderRadius: '8px',
@@ -235,24 +235,19 @@ export default function ChatPage() {
           <div className="sidebar" style={{
             width: '220px', flexShrink: 0,
             borderLeft: '1px solid rgba(255,255,255,0.06)',
-            background: '#0f172a',
-            overflowY: 'auto',
-            padding: '20px 0',
+            background: '#0f172a', overflowY: 'auto', padding: '20px 0',
           }}>
             <div style={{ padding: '0 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <p style={{ fontSize: '11px', fontWeight: 600, color: '#6b6b80', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
                 멤버 — {members.length}
               </p>
             </div>
-
             <div style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {members.map((member) => (
                 <div key={member.userId} style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '8px 10px', borderRadius: '8px',
-                  transition: 'background 0.15s',
                 }}>
-                  {/* 아바타 */}
                   <div style={{
                     width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
                     background: avatarColor(member.email),
@@ -261,22 +256,18 @@ export default function ChatPage() {
                   }}>
                     {avatarInitial(member.email)}
                   </div>
-
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: '13px', fontWeight: 500, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {member.nickname}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                      <span style={{
-                        fontSize: '10px', fontWeight: 500, padding: '1px 6px',
-                        borderRadius: '20px',
-                        background: member.role === 'OWNER' ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.06)',
-                        color: member.role === 'OWNER' ? '#6c63ff' : '#6b6b80',
-                        border: `1px solid ${member.role === 'OWNER' ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                      }}>
-                        {member.role === 'OWNER' ? 'OWNER' : 'MEMBER'}
-                      </span>
-                    </div>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 500, padding: '1px 6px', borderRadius: '20px',
+                      background: member.role === 'OWNER' ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.06)',
+                      color: member.role === 'OWNER' ? '#6c63ff' : '#6b6b80',
+                      border: `1px solid ${member.role === 'OWNER' ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                    }}>
+                      {member.role === 'OWNER' ? 'OWNER' : 'MEMBER'}
+                    </span>
                   </div>
                 </div>
               ))}

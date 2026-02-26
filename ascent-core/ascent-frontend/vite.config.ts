@@ -5,7 +5,7 @@ import path from 'path'
 
 export default defineConfig({
   define: {
-    global: 'globalThis',  
+    global: 'globalThis',
   },
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -18,8 +18,8 @@ export default defineConfig({
       '/api': 'http://localhost:8080',
       '/ws': {
         target: 'http://localhost:8080',
-        ws: true
-      }
-    }
-  }
+        ws: true,
+      },
+    },
+  },
 })
