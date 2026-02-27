@@ -32,6 +32,9 @@ public class ProjectMember {
     @Column(nullable = false, length = 20)
     private ProjectMemberRole role;
 
+    @Column(length = 100)
+    private String roleDescription;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime joinedAt;
 
@@ -42,5 +45,9 @@ public class ProjectMember {
         pm.role = role;
         pm.joinedAt = LocalDateTime.now();
         return pm;
+    }
+
+    public void updateRoleDescription(String roleDescription) {
+        this.roleDescription = roleDescription;
     }
 }

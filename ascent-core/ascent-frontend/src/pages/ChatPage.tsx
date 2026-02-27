@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import { getMessages, getChatRoomMembers } from '../api/chat'
-import type { ChatMessage, ChatRoomMember } from '../types'
+import { getMessages } from '../api/chat'
+import { getProjectMembers, updateRoleDescription } from '../api/project'
+import { getMe } from '../api/user'
+import type { ChatMessage, ProjectMember } from '../types'
 import useAuthStore from '../store/authStore'
 
 export default function ChatPage() {
@@ -12,29 +14,39 @@ export default function ChatPage() {
   const { accessToken } = useAuthStore()
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [members, setMembers] = useState<ChatRoomMember[]>([])
+  const [members, setMembers] = useState<ProjectMember[]>([])
+  const [myUserId, setMyUserId] = useState<number | null>(null)
+  const [myRole, setMyRole] = useState<'OWNER' | 'MEMBER' | null>(null)
   const [input, setInput] = useState('')
   const [connected, setConnected] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
+
+  // 역할 수정 상태
+  const [editingUserId, setEditingUserId] = useState<number | null>(null)
+  const [editingRole, setEditingRole] = useState('')
 
   const clientRef = useRef<Client | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const fetchMessages = async () => {
+    const fetchAll = async () => {
       try {
-        const res = await getMessages(Number(projectId))
-        setMessages(res.data.content.reverse())
-      } catch (err) { console.error(err) }
+        const [msgRes, memberRes, meRes] = await Promise.all([
+          getMessages(Number(projectId)),
+          getProjectMembers(Number(projectId)),
+          getMe(),
+        ])
+        setMessages(msgRes.data.content.reverse())
+        setMembers(memberRes.data.data)
+        setMyUserId(meRes.data.id)
+
+        const me = memberRes.data.data.find((m: ProjectMember) => m.userId === meRes.data.id)
+        if (me) setMyRole(me.role)
+      } catch (err) {
+        console.error(err)
+      }
     }
-    const fetchMembers = async () => {
-      try {
-        const res = await getChatRoomMembers(Number(projectId))
-        setMembers(res.data)
-      } catch (err) { console.error(err) }
-    }
-    fetchMessages()
-    fetchMembers()
+    fetchAll()
   }, [projectId])
 
   useEffect(() => {
@@ -73,6 +85,23 @@ export default function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  const handleEditRole = (member: ProjectMember) => {
+    setEditingUserId(member.userId)
+    setEditingRole(member.roleDescription || '')
+  }
+
+  const handleSaveRole = async (targetUserId: number) => {
+    try {
+      await updateRoleDescription(Number(projectId), targetUserId, editingRole)
+      setMembers((prev) =>
+        prev.map((m) => m.userId === targetUserId ? { ...m, roleDescription: editingRole } : m)
+      )
+      setEditingUserId(null)
+    } catch {
+      alert('역할 수정 실패')
+    }
+  }
+
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -106,9 +135,14 @@ export default function ChatPage() {
         .back-btn { transition: all 0.15s ease; }
         .toggle-btn:hover { background: rgba(255,255,255,0.08) !important; }
         .toggle-btn { transition: all 0.15s ease; }
+        .edit-btn:hover { color: #6c63ff !important; }
+        .edit-btn { transition: all 0.15s ease; }
+        .member-row:hover { background: rgba(255,255,255,0.03) !important; }
+        .member-row { transition: background 0.15s; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .role-input:focus { border-color: #6c63ff !important; outline: none; }
       `}</style>
 
       {/* 헤더 */}
@@ -178,7 +212,6 @@ export default function ChatPage() {
             messages.map((msg, i) => {
               const showDate = i === 0 || !isSameDay(messages[i - 1].createdAt, msg.createdAt)
               const showAvatar = i === 0 || messages[i - 1].senderEmail !== msg.senderEmail || showDate
-
               return (
                 <div key={msg.id}>
                   {showDate && (
@@ -233,42 +266,100 @@ export default function ChatPage() {
         {/* 멤버 사이드바 */}
         {showSidebar && (
           <div className="sidebar" style={{
-            width: '220px', flexShrink: 0,
+            width: '240px', flexShrink: 0,
             borderLeft: '1px solid rgba(255,255,255,0.06)',
-            background: '#0f172a', overflowY: 'auto', padding: '20px 0',
+            background: '#0f172a', overflowY: 'auto',
           }}>
-            <div style={{ padding: '0 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <p style={{ fontSize: '11px', fontWeight: 600, color: '#6b6b80', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
                 멤버 — {members.length}
               </p>
+              {myRole === 'OWNER' && (
+                <p style={{ fontSize: '11px', color: '#6c63ff', marginTop: '4px' }}>
+                  ✏️ 역할을 클릭해서 수정하세요
+                </p>
+              )}
             </div>
-            <div style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+
+            <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {members.map((member) => (
-                <div key={member.userId} style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '8px 10px', borderRadius: '8px',
+                <div key={member.userId} className="member-row" style={{
+                  padding: '10px', borderRadius: '8px',
                 }}>
-                  <div style={{
-                    width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
-                    background: avatarColor(member.email),
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '13px', fontWeight: 600, color: 'white',
-                  }}>
-                    {avatarInitial(member.email)}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {member.nickname}
-                    </div>
-                    <span style={{
-                      fontSize: '10px', fontWeight: 500, padding: '1px 6px', borderRadius: '20px',
-                      background: member.role === 'OWNER' ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.06)',
-                      color: member.role === 'OWNER' ? '#6c63ff' : '#6b6b80',
-                      border: `1px solid ${member.role === 'OWNER' ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                  {/* 아바타 + 이름 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                    <div style={{
+                      width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
+                      background: avatarColor(member.email),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '12px', fontWeight: 600, color: 'white',
                     }}>
-                      {member.role === 'OWNER' ? 'OWNER' : 'MEMBER'}
-                    </span>
+                      {avatarInitial(member.email)}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: 500, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {member.nickname}
+                        {member.userId === myUserId && (
+                          <span style={{ fontSize: '10px', color: '#6b6b80', marginLeft: '4px' }}>(나)</span>
+                        )}
+                      </div>
+                      <span style={{
+                        fontSize: '10px', fontWeight: 500, padding: '1px 6px', borderRadius: '20px',
+                        background: member.role === 'OWNER' ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.06)',
+                        color: member.role === 'OWNER' ? '#6c63ff' : '#6b6b80',
+                        border: `1px solid ${member.role === 'OWNER' ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                      }}>
+                        {member.role}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* 역할 설명 */}
+                  {editingUserId === member.userId ? (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input
+                        type="text"
+                        value={editingRole}
+                        onChange={(e) => setEditingRole(e.target.value)}
+                        placeholder="역할 입력..."
+                        maxLength={100}
+                        className="role-input"
+                        style={{
+                          flex: 1, padding: '5px 8px', fontSize: '11px',
+                          background: '#1f2937', border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '6px', color: '#e8e8f0',
+                          transition: 'border-color 0.2s',
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveRole(member.userId)
+                          if (e.key === 'Escape') setEditingUserId(null)
+                        }}
+                        autoFocus
+                      />
+                      <button onClick={() => handleSaveRole(member.userId)} style={{
+                        padding: '5px 8px', fontSize: '11px',
+                        background: '#6c63ff', border: 'none',
+                        borderRadius: '6px', color: 'white', cursor: 'pointer',
+                      }}>저장</button>
+                      <button onClick={() => setEditingUserId(null)} style={{
+                        padding: '5px 6px', fontSize: '11px',
+                        background: 'rgba(255,255,255,0.06)', border: 'none',
+                        borderRadius: '6px', color: '#9090a8', cursor: 'pointer',
+                      }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '40px' }}>
+                      <span style={{ fontSize: '11px', color: member.roleDescription ? '#9090a8' : '#4b5563', flex: 1 }}>
+                        {member.roleDescription || (myRole === 'OWNER' ? '역할 없음' : '')}
+                      </span>
+                      {myRole === 'OWNER' && (
+                        <button onClick={() => handleEditRole(member)} className="edit-btn" style={{
+                          background: 'transparent', border: 'none',
+                          color: '#4b5563', cursor: 'pointer', fontSize: '11px', padding: '2px 4px',
+                        }}>✏️</button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

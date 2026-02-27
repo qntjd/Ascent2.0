@@ -22,6 +22,15 @@ export interface Project {
   ownerId: number
 }
 
+// 프로젝트 멤버
+export interface ProjectMember {
+  userId: number
+  email: string
+  nickname: string
+  role: 'OWNER' | 'MEMBER'
+  roleDescription: string | null
+}
+
 // 채팅방
 export interface ChatRoom {
   id: number

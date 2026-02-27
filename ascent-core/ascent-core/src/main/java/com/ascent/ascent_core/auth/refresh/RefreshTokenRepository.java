@@ -1,16 +1,19 @@
 package com.ascent.ascent_core.auth.refresh;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 
 @Repository
-@RequiredArgsConstructor
 public class RefreshTokenRepository {
 
     private final RedisTemplate<String, String> redisTemplate;
+
+    public RefreshTokenRepository(@Qualifier("redisTemplate") RedisTemplate<String, String> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     private static final String PREFIX = "RT:";
 

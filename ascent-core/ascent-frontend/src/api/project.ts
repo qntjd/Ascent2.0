@@ -1,36 +1,30 @@
 import api from './axios'
-import type { ApiResponse, Project, InviteCode, PageResponse } from '../types'
+import type { ApiResponse, Project, InviteCode, PageResponse, ProjectMember } from '../types'
 
-// 프로젝트 생성
 export const createProject = async (title: string, description: string) => {
-  const response = await api.post<ApiResponse<Project>>('/projects', { title, description })
-  return response.data
+  return api.post<ApiResponse<Project>>('/projects', { title, description })
 }
 
-// 프로젝트 목록 조회
-export const getProjects = async (page = 0, size = 10) => {
-  const response = await api.get<ApiResponse<PageResponse<Project>>>('/projects', {
-    params: { page, size }
-  })
-  return response.data
+export const getProjects = async () => {
+  return api.get<ApiResponse<PageResponse<Project>>>('/projects')
 }
 
-// 프로젝트 단건 조회
 export const getProject = async (projectId: number) => {
-  const response = await api.get<ApiResponse<Project>>(`/projects/${projectId}`)
-  return response.data
+  return api.get<ApiResponse<Project>>(`/projects/${projectId}`)
 }
 
-// 초대 코드 생성
 export const createInviteCode = async (projectId: number) => {
-  const response = await api.post<ApiResponse<InviteCode>>(`/projects/${projectId}/invite-code`)
-  return response.data
+  return api.post<ApiResponse<InviteCode>>(`/projects/${projectId}/invite-code`)
 }
 
-// 초대 코드로 참여
 export const joinProject = async (code: string) => {
-  const response = await api.post<ApiResponse<Project>>(`/projects/join`, null, {
-    params: { code }
-  })
-  return response.data
+  return api.post<ApiResponse<Project>>(`/projects/join?code=${code}`)
+}
+
+export const getProjectMembers = async (projectId: number) => {
+  return api.get<ApiResponse<ProjectMember[]>>(`/projects/${projectId}/members`)
+}
+
+export const updateRoleDescription = async (projectId: number, targetUserId: number, roleDescription: string) => {
+  return api.patch<ApiResponse<ProjectMember>>(`/projects/${projectId}/members/${targetUserId}/role`, { roleDescription })
 }
