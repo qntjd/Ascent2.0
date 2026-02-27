@@ -1,10 +1,6 @@
 package com.ascent.ascent_core.domain.project;
 
-import com.ascent.ascent_core.domain.project.dto.InviteCodeResponse;
-import com.ascent.ascent_core.domain.project.dto.ProjectCreateRequest;
-import com.ascent.ascent_core.domain.project.dto.ProjectMemberResponse;
-import com.ascent.ascent_core.domain.project.dto.ProjectResponse;
-import com.ascent.ascent_core.domain.project.dto.RoleDescriptionRequest;
+import com.ascent.ascent_core.domain.project.dto.*;
 import com.ascent.ascent_core.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -54,16 +50,28 @@ public class ProjectController {
         return ResponseEntity.ok(ApiResponse.success(projectService.getProjectMembers(projectId)));
     }
 
-    // 역할 설명 수정 (OWNER만 가능)
-    @PatchMapping("/{projectId}/members/{targetUserId}/role")
-    public ResponseEntity<ApiResponse<ProjectMemberResponse>> updateRole(
+    // 태그 추가 (OWNER만 가능)
+    @PostMapping("/{projectId}/members/{targetUserId}/tags")
+    public ResponseEntity<ApiResponse<ProjectMemberResponse>> addTag(
             @PathVariable Long projectId,
             @PathVariable Long targetUserId,
             @AuthenticationPrincipal(expression = "id") Long requesterId,
-            @RequestBody @Valid RoleDescriptionRequest request
+            @RequestBody @Valid TagRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                projectService.updateRoleDescription(projectId, targetUserId, requesterId, request)));
+                projectService.addTag(projectId, targetUserId, requesterId, request)));
+    }
+
+    // 태그 삭제 (OWNER만 가능)
+    @DeleteMapping("/{projectId}/members/{targetUserId}/tags/{tagId}")
+    public ResponseEntity<ApiResponse<ProjectMemberResponse>> deleteTag(
+            @PathVariable Long projectId,
+            @PathVariable Long targetUserId,
+            @PathVariable Long tagId,
+            @AuthenticationPrincipal(expression = "id") Long requesterId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                projectService.deleteTag(projectId, targetUserId, tagId, requesterId)));
     }
 
     @PostMapping("/{projectId}/invite-code")

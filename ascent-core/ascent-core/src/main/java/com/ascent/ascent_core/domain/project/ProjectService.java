@@ -5,11 +5,7 @@ import com.ascent.ascent_core.chat.ChatRoomMember;
 import com.ascent.ascent_core.chat.ChatRoomMemberRole;
 import com.ascent.ascent_core.chat.ChatRoomMemberRepository;
 import com.ascent.ascent_core.chat.ChatRoomRepository;
-import com.ascent.ascent_core.domain.project.dto.InviteCodeResponse;
-import com.ascent.ascent_core.domain.project.dto.ProjectCreateRequest;
-import com.ascent.ascent_core.domain.project.dto.ProjectMemberResponse;
-import com.ascent.ascent_core.domain.project.dto.ProjectResponse;
-import com.ascent.ascent_core.domain.project.dto.RoleDescriptionRequest;
+import com.ascent.ascent_core.domain.project.dto.*;
 import com.ascent.ascent_core.domain.user.User;
 import com.ascent.ascent_core.domain.user.UserRepository;
 import com.ascent.ascent_core.global.exception.CustomException;
@@ -30,6 +26,7 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectMemberTagRepository projectMemberTagRepository;
     private final ProjectInviteCodeRepository projectInviteCodeRepository;
     private final UserRepository userRepository;
     private final ChatRoomRepository chatRoomRepository;
@@ -65,30 +62,57 @@ public class ProjectService {
         return new ProjectResponse(project);
     }
 
-    // 프로젝트 멤버 목록 조회
+    // 프로젝트 멤버 목록 조회 (태그 포함)
     public List<ProjectMemberResponse> getProjectMembers(Long projectId) {
         return projectMemberRepository.findAllByProjectId(projectId)
                 .stream()
-                .map(ProjectMemberResponse::new)
+                .map(pm -> {
+                    List<ProjectMemberTag> tags = projectMemberTagRepository.findAllByProjectMemberId(pm.getId());
+                    return new ProjectMemberResponse(pm, tags);
+                })
                 .collect(Collectors.toList());
     }
 
-    // 역할 설명 수정 (OWNER만 가능)
+    // 태그 추가 (OWNER만 가능)
     @Transactional
-    public ProjectMemberResponse updateRoleDescription(Long projectId, Long targetUserId, Long requesterId, RoleDescriptionRequest request) {
-        // 요청자가 OWNER인지 확인
-        ProjectMember requester = projectMemberRepository.findByProjectIdAndUserId(projectId, requesterId)
+    public ProjectMemberResponse addTag(Long projectId, Long targetUserId, Long requesterId, TagRequest request) {
+        checkOwner(projectId, requesterId);
+
+        ProjectMember target = projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        List<ProjectMemberTag> existingTags = projectMemberTagRepository.findAllByProjectMemberId(target.getId());
+        if (existingTags.size() >= 5) {
+            throw new CustomException(ErrorCode.FORBIDDEN); // 태그 최대 5개
+        }
+
+        ProjectMemberTag tag = ProjectMemberTag.create(target, request.getTag());
+        projectMemberTagRepository.save(tag);
+
+        List<ProjectMemberTag> updatedTags = projectMemberTagRepository.findAllByProjectMemberId(target.getId());
+        return new ProjectMemberResponse(target, updatedTags);
+    }
+
+    // 태그 삭제 (OWNER만 가능)
+    @Transactional
+    public ProjectMemberResponse deleteTag(Long projectId, Long targetUserId, Long tagId, Long requesterId) {
+        checkOwner(projectId, requesterId);
+
+        ProjectMember target = projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        projectMemberTagRepository.deleteByIdAndProjectMemberId(tagId, target.getId());
+
+        List<ProjectMemberTag> updatedTags = projectMemberTagRepository.findAllByProjectMemberId(target.getId());
+        return new ProjectMemberResponse(target, updatedTags);
+    }
+
+    private void checkOwner(Long projectId, Long userId) {
+        ProjectMember requester = projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
         if (requester.getRole() != ProjectMemberRole.OWNER) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
-
-        // 대상 멤버 역할 수정
-        ProjectMember target = projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-        target.updateRoleDescription(request.getRoleDescription());
-
-        return new ProjectMemberResponse(target);
     }
 
     @Transactional
