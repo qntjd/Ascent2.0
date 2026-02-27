@@ -17,18 +17,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @RequiredArgsConstructor
-@EnableMethodSecurity(prePostEnabled = true) 
+@EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    
     @Bean
     public AuthenticationManager authenticationManager(
             AuthenticationConfiguration authenticationConfiguration
@@ -36,12 +34,14 @@ public class SecurityConfig {
         return authenticationConfiguration.getAuthenticationManager();
     }
 
-    
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
-            //CSRF 비활성화 (JWT 사용시)
+            // CORS 활성화 (CorsConfig 적용)
+            .cors(cors -> cors.configure(http))
+
+            // CSRF 비활성화 (JWT 사용시)
             .csrf(csrf -> csrf.disable())
 
             // 세션 사용 안함 (JWT stateless)
@@ -51,12 +51,9 @@ public class SecurityConfig {
 
             // 요청 권한 설정
             .authorizeHttpRequests(auth -> auth
-                    // 회원가입, 로그인 허용
                     .requestMatchers(HttpMethod.POST, "/api/users/signup").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-                    // Swagger, H2 허용
                     .requestMatchers("/h2-console/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                    // 나머지 요청은 인증 필요
                     .requestMatchers("/ws/**").permitAll()
                     .anyRequest().authenticated()
             )
@@ -64,9 +61,8 @@ public class SecurityConfig {
             // JWT 필터 등록
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 
-            // H2 콘솔 허용 설정 (테스트용)
-            .headers(headers -> headers.frameOptions(frame -> frame.disable()))
-        ;
+            // H2 콘솔 허용 설정
+            .headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
         return http.build();
     }

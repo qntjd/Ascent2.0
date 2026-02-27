@@ -11,13 +11,24 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
                 .allowedOrigins(
-                        "http://localhost:3000",  // React 포트
-                        "http://localhost:5173",  // Vite 포트
-                        "http://localhost:8080"   // 기타 로컬
+                        "http://localhost:3000",
+                        "http://localhost:5173",
+                        "http://localhost:8080",
+                        "https://ascent2-app.vercel.app"
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);
+
+        registry.addMapping("/ws/**")
+                .allowedOrigins(
+                        "http://localhost:3000",
+                        "http://localhost:5173",
+                        "https://ascent2-app.vercel.app"
+                )
+                .allowedMethods("GET", "POST", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }
