@@ -22,13 +22,19 @@ export interface Project {
   ownerId: number
 }
 
+// 태그
+export interface MemberTag {
+  id: number
+  tag: string
+}
+
 // 프로젝트 멤버
 export interface ProjectMember {
   userId: number
   email: string
   nickname: string
   role: 'OWNER' | 'MEMBER'
-  roleDescription: string | null
+  tags: MemberTag[]
 }
 
 // 채팅방

@@ -25,6 +25,10 @@ export const getProjectMembers = async (projectId: number) => {
   return api.get<ApiResponse<ProjectMember[]>>(`/projects/${projectId}/members`)
 }
 
-export const updateRoleDescription = async (projectId: number, targetUserId: number, roleDescription: string) => {
-  return api.patch<ApiResponse<ProjectMember>>(`/projects/${projectId}/members/${targetUserId}/role`, { roleDescription })
+export const addMemberTag = async (projectId: number, targetUserId: number, tag: string) => {
+  return api.post<ApiResponse<ProjectMember>>(`/projects/${projectId}/members/${targetUserId}/tags`, { tag })
+}
+
+export const deleteMemberTag = async (projectId: number, targetUserId: number, tagId: number) => {
+  return api.delete<ApiResponse<ProjectMember>>(`/projects/${projectId}/members/${targetUserId}/tags/${tagId}`)
 }

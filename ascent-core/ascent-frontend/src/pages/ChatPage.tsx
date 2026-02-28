@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import { getMessages } from '../api/chat'
-import { getProjectMembers, updateRoleDescription } from '../api/project'
+import { getProjectMembers, addMemberTag, deleteMemberTag } from '../api/project'
 import { getMe } from '../api/user'
 import type { ChatMessage, ProjectMember } from '../types'
 import useAuthStore from '../store/authStore'
@@ -21,9 +21,9 @@ export default function ChatPage() {
   const [connected, setConnected] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
 
-  // 역할 수정 상태
-  const [editingUserId, setEditingUserId] = useState<number | null>(null)
-  const [editingRole, setEditingRole] = useState('')
+  // 태그 입력 상태
+  const [addingTagUserId, setAddingTagUserId] = useState<number | null>(null)
+  const [tagInput, setTagInput] = useState('')
 
   const clientRef = useRef<Client | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -39,7 +39,6 @@ export default function ChatPage() {
         setMessages(msgRes.data.content.reverse())
         setMembers(memberRes.data.data)
         setMyUserId(meRes.data.id)
-
         const me = memberRes.data.data.find((m: ProjectMember) => m.userId === meRes.data.id)
         if (me) setMyRole(me.role)
       } catch (err) {
@@ -85,22 +84,40 @@ export default function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
-  const handleEditRole = (member: ProjectMember) => {
-    setEditingUserId(member.userId)
-    setEditingRole(member.roleDescription || '')
-  }
-
-  const handleSaveRole = async (targetUserId: number) => {
+  const handleAddTag = async (targetUserId: number) => {
+    if (!tagInput.trim()) return
     try {
-      await updateRoleDescription(Number(projectId), targetUserId, editingRole)
+      const res = await addMemberTag(Number(projectId), targetUserId, tagInput.trim())
       setMembers((prev) =>
-        prev.map((m) => m.userId === targetUserId ? { ...m, roleDescription: editingRole } : m)
+        prev.map((m) => m.userId === targetUserId ? { ...m, tags: res.data.data.tags } : m)
       )
-      setEditingUserId(null)
+      setTagInput('')
+      setAddingTagUserId(null)
     } catch {
-      alert('역할 수정 실패')
+      alert('태그 추가 실패 (최대 5개)')
     }
   }
+
+  const handleDeleteTag = async (targetUserId: number, tagId: number) => {
+    try {
+      const res = await deleteMemberTag(Number(projectId), targetUserId, tagId)
+      setMembers((prev) =>
+        prev.map((m) => m.userId === targetUserId ? { ...m, tags: res.data.data.tags } : m)
+      )
+    } catch {
+      alert('태그 삭제 실패')
+    }
+  }
+
+  const tagColors = [
+    { bg: 'rgba(108,99,255,0.15)', color: '#a78bfa', border: 'rgba(108,99,255,0.3)' },
+    { bg: 'rgba(16,185,129,0.15)', color: '#34d399', border: 'rgba(16,185,129,0.3)' },
+    { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: 'rgba(245,158,11,0.3)' },
+    { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
+    { bg: 'rgba(236,72,153,0.15)', color: '#f472b6', border: 'rgba(236,72,153,0.3)' },
+  ]
+
+  const getTagColor = (index: number) => tagColors[index % tagColors.length]
 
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -135,14 +152,16 @@ export default function ChatPage() {
         .back-btn { transition: all 0.15s ease; }
         .toggle-btn:hover { background: rgba(255,255,255,0.08) !important; }
         .toggle-btn { transition: all 0.15s ease; }
-        .edit-btn:hover { color: #6c63ff !important; }
-        .edit-btn { transition: all 0.15s ease; }
-        .member-row:hover { background: rgba(255,255,255,0.03) !important; }
-        .member-row { transition: background 0.15s; }
+        .tag-delete:hover { opacity: 1 !important; }
+        .tag-delete { transition: opacity 0.15s; }
+        .member-row:hover { background: rgba(255,255,255,0.02) !important; }
+        .member-row { transition: background 0.15s; border-radius: 10px; }
+        .add-tag-btn:hover { color: #6c63ff !important; border-color: rgba(108,99,255,0.3) !important; }
+        .add-tag-btn { transition: all 0.15s; }
+        .tag-input:focus { border-color: #6c63ff !important; outline: none; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-        .role-input:focus { border-color: #6c63ff !important; outline: none; }
       `}</style>
 
       {/* 헤더 */}
@@ -266,7 +285,7 @@ export default function ChatPage() {
         {/* 멤버 사이드바 */}
         {showSidebar && (
           <div className="sidebar" style={{
-            width: '240px', flexShrink: 0,
+            width: '250px', flexShrink: 0,
             borderLeft: '1px solid rgba(255,255,255,0.06)',
             background: '#0f172a', overflowY: 'auto',
           }}>
@@ -276,18 +295,16 @@ export default function ChatPage() {
               </p>
               {myRole === 'OWNER' && (
                 <p style={{ fontSize: '11px', color: '#6c63ff', marginTop: '4px' }}>
-                  ✏️ 역할을 클릭해서 수정하세요
+                  + 버튼으로 역할 태그 추가
                 </p>
               )}
             </div>
 
-            <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {members.map((member) => (
-                <div key={member.userId} className="member-row" style={{
-                  padding: '10px', borderRadius: '8px',
-                }}>
+                <div key={member.userId} className="member-row" style={{ padding: '10px' }}>
                   {/* 아바타 + 이름 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                     <div style={{
                       width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
                       background: avatarColor(member.email),
@@ -314,52 +331,78 @@ export default function ChatPage() {
                     </div>
                   </div>
 
-                  {/* 역할 설명 */}
-                  {editingUserId === member.userId ? (
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <input
-                        type="text"
-                        value={editingRole}
-                        onChange={(e) => setEditingRole(e.target.value)}
-                        placeholder="역할 입력..."
-                        maxLength={100}
-                        className="role-input"
-                        style={{
-                          flex: 1, padding: '5px 8px', fontSize: '11px',
-                          background: '#1f2937', border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '6px', color: '#e8e8f0',
-                          transition: 'border-color 0.2s',
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveRole(member.userId)
-                          if (e.key === 'Escape') setEditingUserId(null)
-                        }}
-                        autoFocus
-                      />
-                      <button onClick={() => handleSaveRole(member.userId)} style={{
-                        padding: '5px 8px', fontSize: '11px',
-                        background: '#6c63ff', border: 'none',
-                        borderRadius: '6px', color: 'white', cursor: 'pointer',
-                      }}>저장</button>
-                      <button onClick={() => setEditingUserId(null)} style={{
-                        padding: '5px 6px', fontSize: '11px',
-                        background: 'rgba(255,255,255,0.06)', border: 'none',
-                        borderRadius: '6px', color: '#9090a8', cursor: 'pointer',
-                      }}>✕</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '40px' }}>
-                      <span style={{ fontSize: '11px', color: member.roleDescription ? '#9090a8' : '#4b5563', flex: 1 }}>
-                        {member.roleDescription || (myRole === 'OWNER' ? '역할 없음' : '')}
-                      </span>
-                      {myRole === 'OWNER' && (
-                        <button onClick={() => handleEditRole(member)} className="edit-btn" style={{
-                          background: 'transparent', border: 'none',
-                          color: '#4b5563', cursor: 'pointer', fontSize: '11px', padding: '2px 4px',
-                        }}>✏️</button>
-                      )}
-                    </div>
-                  )}
+                  {/* 태그 목록 */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', paddingLeft: '38px' }}>
+                    {member.tags.map((tag, idx) => {
+                      const color = getTagColor(idx)
+                      return (
+                        <span key={tag.id} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '3px',
+                          fontSize: '11px', fontWeight: 500,
+                          padding: '2px 8px', borderRadius: '20px',
+                          background: color.bg, color: color.color, border: `1px solid ${color.border}`,
+                        }}>
+                          {tag.tag}
+                          {myRole === 'OWNER' && (
+                            <button onClick={() => handleDeleteTag(member.userId, tag.id)} className="tag-delete" style={{
+                              background: 'transparent', border: 'none',
+                              color: color.color, cursor: 'pointer',
+                              fontSize: '10px', padding: '0', lineHeight: 1,
+                              opacity: 0.6, marginLeft: '1px',
+                            }}>✕</button>
+                          )}
+                        </span>
+                      )
+                    })}
+
+                    {/* 태그 추가 버튼/입력 */}
+                    {myRole === 'OWNER' && member.tags.length < 5 && (
+                      addingTagUserId === member.userId ? (
+                        <div style={{ display: 'flex', gap: '3px', marginTop: '2px', width: '100%' }}>
+                          <input
+                            type="text"
+                            value={tagInput}
+                            onChange={(e) => setTagInput(e.target.value)}
+                            placeholder="태그 입력..."
+                            maxLength={30}
+                            className="tag-input"
+                            autoFocus
+                            style={{
+                              flex: 1, padding: '3px 8px', fontSize: '11px',
+                              background: '#1f2937', border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '20px', color: '#e8e8f0',
+                              transition: 'border-color 0.2s',
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddTag(member.userId)
+                              if (e.key === 'Escape') { setAddingTagUserId(null); setTagInput('') }
+                            }}
+                          />
+                          <button onClick={() => handleAddTag(member.userId)} style={{
+                            padding: '3px 8px', fontSize: '11px',
+                            background: '#6c63ff', border: 'none',
+                            borderRadius: '20px', color: 'white', cursor: 'pointer',
+                          }}>+</button>
+                          <button onClick={() => { setAddingTagUserId(null); setTagInput('') }} style={{
+                            padding: '3px 6px', fontSize: '11px',
+                            background: 'rgba(255,255,255,0.06)', border: 'none',
+                            borderRadius: '20px', color: '#9090a8', cursor: 'pointer',
+                          }}>✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setAddingTagUserId(member.userId); setTagInput('') }}
+                          className="add-tag-btn"
+                          style={{
+                            fontSize: '11px', padding: '2px 8px', borderRadius: '20px',
+                            background: 'transparent',
+                            border: '1px dashed rgba(255,255,255,0.15)',
+                            color: '#6b6b80', cursor: 'pointer',
+                          }}
+                        >+ 태그</button>
+                      )
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
