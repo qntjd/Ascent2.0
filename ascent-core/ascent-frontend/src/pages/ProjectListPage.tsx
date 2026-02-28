@@ -240,7 +240,7 @@ export default function ProjectListPage() {
                     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: '8px', color: '#9090a8', cursor: 'pointer',
                   }}>초대 코드</button>
-                  <button onClick={() => navigate(`/projects/${project.id}/chat`)} className="btn-primary" style={{
+                  <button onClick={() => navigate(`/projects/${project.id}`)} className="btn-primary" style={{
                     padding: '7px 16px', fontSize: '12px', fontWeight: 600,
                     background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
                     border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',

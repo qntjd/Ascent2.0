@@ -3,8 +3,7 @@ import useAuthStore from './store/authStore'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import ProjectListPage from './pages/ProjectListPage'
-import ChatPage from './pages/ChatPage'
-
+import DashboardPage from './pages/DashboardPage.tsx'
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuthStore()
@@ -18,7 +17,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/projects" element={<PrivateRoute><ProjectListPage /></PrivateRoute>} />
-        <Route path="/projects/:projectId/chat" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
+        <Route path="/projects/:projectId/*" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>

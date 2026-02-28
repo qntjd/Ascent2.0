@@ -1,0 +1,614 @@
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Client } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
+import { getMessages } from '../api/chat'
+import { getProjectMembers, addMemberTag, deleteMemberTag } from '../api/project'
+import { getProject } from '../api/project'
+import { getMe } from '../api/user'
+import { getSchedules, createSchedule, toggleSchedule, deleteSchedule } from '../api/schedule'
+import type { Schedule } from '../api/schedule'
+import type { ChatMessage, ProjectMember, Project } from '../types'
+import useAuthStore from '../store/authStore'
+
+type Tab = 'dashboard' | 'chat' | 'schedule'
+
+export default function DashboardPage() {
+  const { projectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
+  const { accessToken } = useAuthStore()
+
+  const [tab, setTab] = useState<Tab>('dashboard')
+  const [project, setProject] = useState<Project | null>(null)
+  const [members, setMembers] = useState<ProjectMember[]>([])
+  const [myUserId, setMyUserId] = useState<number | null>(null)
+  const [myRole, setMyRole] = useState<'OWNER' | 'MEMBER' | null>(null)
+
+  // 채팅
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [connected, setConnected] = useState(false)
+  const clientRef = useRef<Client | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  // 일정
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [showScheduleForm, setShowScheduleForm] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    title: '', description: '', startDate: '', endDate: '', assigneeId: null as number | null
+  })
+  const [calendarMonth, setCalendarMonth] = useState(new Date())
+
+  // 멤버 태그
+  const [addingTagUserId, setAddingTagUserId] = useState<number | null>(null)
+  const [tagInput, setTagInput] = useState('')
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [projectRes, memberRes, meRes, msgRes, scheduleRes] = await Promise.all([
+          getProject(Number(projectId)),
+          getProjectMembers(Number(projectId)),
+          getMe(),
+          getMessages(Number(projectId)),
+          getSchedules(Number(projectId)),
+        ])
+        setProject(projectRes.data.data)
+        setMembers(memberRes.data.data)
+        setMyUserId(meRes.data.id)
+        setMessages(msgRes.data.content.reverse())
+        setSchedules(scheduleRes.data.data)
+        const me = memberRes.data.data.find((m: ProjectMember) => m.userId === meRes.data.id)
+        if (me) setMyRole(me.role)
+      } catch (err) { console.error(err) }
+    }
+    fetchAll()
+  }, [projectId])
+
+  // WebSocket
+  useEffect(() => {
+    const wsUrl = import.meta.env.VITE_WS_URL || ''
+    const client = new Client({
+      webSocketFactory: () => new SockJS(`${wsUrl}/ws`),
+      connectHeaders: { Authorization: `Bearer ${accessToken}` },
+      onConnect: () => {
+        setConnected(true)
+        client.subscribe(`/topic/chat/${projectId}`, (message) => {
+          const newMsg: ChatMessage = JSON.parse(message.body)
+          setMessages((prev) => [...prev, newMsg])
+        })
+      },
+      onDisconnect: () => setConnected(false),
+    })
+    client.activate()
+    clientRef.current = client
+    return () => { client.deactivate() }
+  }, [projectId, accessToken])
+
+  useEffect(() => {
+    if (tab === 'chat') bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, tab])
+
+  const handleSend = () => {
+    if (!input.trim() || !clientRef.current?.connected) return
+    clientRef.current.publish({
+      destination: `/app/chat/${projectId}`,
+      body: JSON.stringify({ content: input }),
+    })
+    setInput('')
+  }
+
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const res = await createSchedule(Number(projectId), {
+        ...scheduleForm,
+        assigneeId: scheduleForm.assigneeId || null,
+      })
+      setSchedules((prev) => [...prev, res.data.data])
+      setShowScheduleForm(false)
+      setScheduleForm({ title: '', description: '', startDate: '', endDate: '', assigneeId: null })
+    } catch { alert('일정 생성 실패') }
+  }
+
+  const handleToggle = async (scheduleId: number) => {
+    try {
+      const res = await toggleSchedule(Number(projectId), scheduleId)
+      setSchedules((prev) => prev.map((s) => s.id === scheduleId ? res.data.data : s))
+    } catch { alert('상태 변경 실패') }
+  }
+
+  const handleDeleteSchedule = async (scheduleId: number) => {
+    if (!confirm('일정을 삭제할까요?')) return
+    try {
+      await deleteSchedule(Number(projectId), scheduleId)
+      setSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
+    } catch { alert('삭제 실패') }
+  }
+
+  const handleAddTag = async (targetUserId: number) => {
+    if (!tagInput.trim()) return
+    try {
+      const res = await addMemberTag(Number(projectId), targetUserId, tagInput.trim())
+      setMembers((prev) => prev.map((m) => m.userId === targetUserId ? { ...m, tags: res.data.data.tags } : m))
+      setTagInput(''); setAddingTagUserId(null)
+    } catch { alert('태그 추가 실패 (최대 5개)') }
+  }
+
+  const handleDeleteTag = async (targetUserId: number, tagId: number) => {
+    try {
+      const res = await deleteMemberTag(Number(projectId), targetUserId, tagId)
+      setMembers((prev) => prev.map((m) => m.userId === targetUserId ? { ...m, tags: res.data.data.tags } : m))
+    } catch { alert('태그 삭제 실패') }
+  }
+
+  // 달력
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const firstDay = new Date(year, month, 1).getDay()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    return { firstDay, daysInMonth, year, month }
+  }
+
+  const getSchedulesForDay = (day: number) => {
+    const { year, month } = getDaysInMonth(calendarMonth)
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    return schedules.filter((s) => s.startDate <= dateStr && s.endDate >= dateStr)
+  }
+
+  const avatarColor = (email: string) => {
+    const colors = ['#6c63ff', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ec4899']
+    let hash = 0
+    for (let i = 0; i < email.length; i++) hash = email.charCodeAt(i) + ((hash << 5) - hash)
+    return colors[Math.abs(hash) % colors.length]
+  }
+
+  const tagColors = [
+    { bg: 'rgba(108,99,255,0.15)', color: '#a78bfa', border: 'rgba(108,99,255,0.3)' },
+    { bg: 'rgba(16,185,129,0.15)', color: '#34d399', border: 'rgba(16,185,129,0.3)' },
+    { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: 'rgba(245,158,11,0.3)' },
+    { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
+    { bg: 'rgba(236,72,153,0.15)', color: '#f472b6', border: 'rgba(236,72,153,0.3)' },
+  ]
+
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const formatTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  const isSameDay = (a: string, b: string) =>
+    new Date(a).toDateString() === new Date(b).toDateString()
+
+  const { firstDay, daysInMonth, year, month } = getDaysInMonth(calendarMonth)
+  const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토']
+
+  const completedCount = schedules.filter((s) => s.completed).length
+  const totalCount = schedules.length
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#111827', fontFamily: "'DM Sans', sans-serif", color: '#e8e8f0' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@700;800&display=swap');
+        * { box-sizing: border-box; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        .tab-btn { transition: all 0.15s; border-bottom: 2px solid transparent; }
+        .tab-btn:hover { color: #e8e8f0 !important; }
+        .send-btn:hover:not(:disabled) { background: #7c74ff !important; transform: translateY(-1px); }
+        .send-btn { transition: all 0.15s ease; }
+        .back-btn:hover { background: rgba(255,255,255,0.06) !important; color: #e8e8f0 !important; }
+        .back-btn { transition: all 0.15s; }
+        .schedule-row:hover { background: rgba(255,255,255,0.03) !important; }
+        .schedule-row { transition: background 0.15s; }
+        .cal-day:hover { background: rgba(255,255,255,0.05) !important; }
+        .cal-day { transition: background 0.15s; }
+        .tag-delete:hover { opacity: 1 !important; }
+        .modal-overlay { animation: fadeIn 0.2s ease; }
+        .modal-content { animation: fadeUp 0.25s ease; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .input-field:focus { border-color: #6c63ff !important; box-shadow: 0 0 0 3px rgba(108,99,255,0.15) !important; outline: none; }
+        textarea:focus { border-color: #6c63ff !important; box-shadow: 0 0 0 3px rgba(108,99,255,0.15) !important; outline: none; }
+        select:focus { border-color: #6c63ff !important; outline: none; }
+      `}</style>
+
+      {/* 헤더 */}
+      <div style={{
+        background: 'rgba(17,24,39,0.95)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '0 24px', flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', height: '52px' }}>
+          <button onClick={() => navigate('/projects')} className="back-btn" style={{
+            padding: '5px 10px', borderRadius: '8px',
+            background: 'transparent', border: 'none',
+            color: '#9090a8', cursor: 'pointer', fontSize: '13px',
+          }}>← 프로젝트</button>
+          <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '24px', height: '24px',
+              background: 'linear-gradient(135deg, #6c63ff, #63b3ff)',
+              borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px',
+            }}>⚡</div>
+            <span style={{ fontSize: '14px', fontWeight: 600 }}>{project?.title || '...'}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#6b6b80' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: connected ? '#4ade80' : '#f87171', boxShadow: connected ? '0 0 6px #4ade80' : 'none' }} />
+            {connected ? '연결됨' : '연결 중...'}
+          </div>
+        </div>
+
+        {/* 탭 */}
+        <div style={{ display: 'flex', gap: '0' }}>
+          {(['dashboard', 'chat', 'schedule'] as Tab[]).map((t) => {
+            const labels: Record<Tab, string> = { dashboard: '대시보드', chat: '채팅', schedule: '일정' }
+            const icons: Record<Tab, string> = { dashboard: '⊞', chat: '💬', schedule: '📅' }
+            return (
+              <button key={t} onClick={() => setTab(t)} className="tab-btn" style={{
+                padding: '10px 20px', fontSize: '13px', fontWeight: 500,
+                background: 'transparent', border: 'none',
+                borderBottom: `2px solid ${tab === t ? '#6c63ff' : 'transparent'}`,
+                color: tab === t ? '#6c63ff' : '#6b6b80', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}>
+                <span>{icons[t]}</span> {labels[t]}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 대시보드 탭 */}
+      {tab === 'dashboard' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '28px 24px' }}>
+          <div style={{ maxWidth: '900px', margin: '0 auto', display: 'grid', gap: '20px' }}>
+
+            {/* 프로젝트 정보 */}
+            <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, fontFamily: "'Syne', sans-serif", marginBottom: '8px' }}>{project?.title}</h2>
+                  <p style={{ fontSize: '14px', color: '#9090a8', lineHeight: 1.6 }}>{project?.description}</p>
+                </div>
+                <span style={{
+                  fontSize: '11px', fontWeight: 500, padding: '4px 10px', borderRadius: '20px',
+                  background: project?.status === 'OPEN' ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+                  color: project?.status === 'OPEN' ? '#4ade80' : '#f87171',
+                  border: `1px solid ${project?.status === 'OPEN' ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
+                }}>
+                  {project?.status === 'OPEN' ? '진행 중' : project?.status}
+                </span>
+              </div>
+            </div>
+
+            {/* 일정 진행률 */}
+            {totalCount > 0 && (
+              <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#d1d5db' }}>일정 진행률</h3>
+                  <span style={{ fontSize: '13px', color: '#6c63ff', fontWeight: 600 }}>{completedCount}/{totalCount}</span>
+                </div>
+                <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '4px',
+                    background: 'linear-gradient(90deg, #6c63ff, #63b3ff)',
+                    width: `${(completedCount / totalCount) * 100}%`,
+                    transition: 'width 0.5s ease',
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* 멤버 */}
+            <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#d1d5db' }}>팀원 — {members.length}명</h3>
+                {myRole === 'OWNER' && <span style={{ fontSize: '11px', color: '#6c63ff' }}>+ 태그 버튼으로 역할 추가</span>}
+              </div>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {members.map((member) => (
+                  <div key={member.userId} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: '#111827', borderRadius: '10px' }}>
+                    <div style={{
+                      width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
+                      background: avatarColor(member.email),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '14px', fontWeight: 600, color: 'white',
+                    }}>{member.email[0].toUpperCase()}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 500 }}>{member.nickname}</span>
+                        {member.userId === myUserId && <span style={{ fontSize: '10px', color: '#6b6b80' }}>(나)</span>}
+                        <span style={{
+                          fontSize: '10px', padding: '1px 6px', borderRadius: '20px',
+                          background: member.role === 'OWNER' ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.06)',
+                          color: member.role === 'OWNER' ? '#6c63ff' : '#6b6b80',
+                          border: `1px solid ${member.role === 'OWNER' ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                        }}>{member.role}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {member.tags.map((tag, idx) => {
+                          const c = tagColors[idx % tagColors.length]
+                          return (
+                            <span key={tag.id} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '3px',
+                              fontSize: '11px', padding: '2px 8px', borderRadius: '20px',
+                              background: c.bg, color: c.color, border: `1px solid ${c.border}`,
+                            }}>
+                              {tag.tag}
+                              {myRole === 'OWNER' && (
+                                <button onClick={() => handleDeleteTag(member.userId, tag.id)} className="tag-delete" style={{
+                                  background: 'transparent', border: 'none', color: c.color,
+                                  cursor: 'pointer', fontSize: '10px', padding: '0', opacity: 0.6,
+                                }}>✕</button>
+                              )}
+                            </span>
+                          )
+                        })}
+                        {myRole === 'OWNER' && member.tags.length < 5 && (
+                          addingTagUserId === member.userId ? (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <input type="text" value={tagInput} onChange={(e) => setTagInput(e.target.value)}
+                                placeholder="태그..." maxLength={30} autoFocus className="input-field"
+                                style={{ padding: '2px 8px', fontSize: '11px', background: '#1f2937', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: '#e8e8f0', width: '80px' }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddTag(member.userId); if (e.key === 'Escape') { setAddingTagUserId(null); setTagInput('') } }}
+                              />
+                              <button onClick={() => handleAddTag(member.userId)} style={{ padding: '2px 8px', fontSize: '11px', background: '#6c63ff', border: 'none', borderRadius: '20px', color: 'white', cursor: 'pointer' }}>+</button>
+                              <button onClick={() => { setAddingTagUserId(null); setTagInput('') }} style={{ padding: '2px 6px', fontSize: '11px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '20px', color: '#9090a8', cursor: 'pointer' }}>✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setAddingTagUserId(member.userId); setTagInput('') }}
+                              style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.15)', color: '#6b6b80', cursor: 'pointer' }}>+ 태그</button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 채팅 탭 */}
+      {tab === 'chat' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {messages.length === 0 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                <div style={{ fontSize: '48px' }}>💬</div>
+                <p style={{ color: '#6b6b80', fontSize: '14px' }}>첫 메시지를 보내보세요!</p>
+              </div>
+            ) : messages.map((msg, i) => {
+              const showDate = i === 0 || !isSameDay(messages[i - 1].createdAt, msg.createdAt)
+              const showAvatar = i === 0 || messages[i - 1].senderEmail !== msg.senderEmail || showDate
+              return (
+                <div key={msg.id}>
+                  {showDate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '16px 0' }}>
+                      <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+                      <span style={{ fontSize: '11px', color: '#6b6b80', padding: '3px 10px', background: '#1f2937', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>{formatDate(msg.createdAt)}</span>
+                      <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: showAvatar ? '12px' : '2px' }}>
+                    <div style={{ width: '32px', flexShrink: 0 }}>
+                      {showAvatar && (
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: avatarColor(msg.senderEmail), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 600, color: 'white' }}>
+                          {msg.senderEmail[0].toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {showAvatar && (
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: avatarColor(msg.senderEmail) }}>{msg.senderEmail.split('@')[0]}</span>
+                          <span style={{ fontSize: '11px', color: '#6b6b80' }}>{formatTime(msg.createdAt)}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'inline-block', background: '#1f2937', border: '1px solid rgba(255,255,255,0.06)', borderRadius: showAvatar ? '4px 12px 12px 12px' : '12px', padding: '8px 14px', fontSize: '14px', lineHeight: '1.5', color: '#d1d5db', maxWidth: '520px', wordBreak: 'break-word' }}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            <div ref={bottomRef} />
+          </div>
+          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '6px 6px 6px 16px' }}>
+              <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                placeholder={connected ? "메시지를 입력하세요..." : "연결 중..."}
+                disabled={!connected}
+                style={{ flex: 1, background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: '14px', outline: 'none', fontFamily: 'inherit' }}
+              />
+              <button onClick={handleSend} disabled={!connected || !input.trim()} className="send-btn" style={{
+                width: '36px', height: '36px', background: input.trim() && connected ? 'linear-gradient(135deg, #6c63ff, #5a54e8)' : 'rgba(255,255,255,0.06)',
+                border: 'none', borderRadius: '8px', cursor: input.trim() && connected ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 2L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 일정 탭 */}
+      {tab === 'schedule' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+          <div style={{ maxWidth: '900px', margin: '0 auto', display: 'grid', gap: '20px' }}>
+
+            {/* 달력 */}
+            <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#e8e8f0', cursor: 'pointer', padding: '6px 10px', fontSize: '14px' }}>‹</button>
+                <span style={{ fontSize: '16px', fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>{year}년 {monthNames[month]}</span>
+                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#e8e8f0', cursor: 'pointer', padding: '6px 10px', fontSize: '14px' }}>›</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+                {dayNames.map((d) => (
+                  <div key={d} style={{ textAlign: 'center', fontSize: '11px', color: '#6b6b80', fontWeight: 600, padding: '4px 0' }}>{d}</div>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} />)}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1
+                  const daySchedules = getSchedulesForDay(day)
+                  const today = new Date()
+                  const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year
+                  return (
+                    <div key={day} className="cal-day" style={{
+                      minHeight: '64px', padding: '4px', borderRadius: '8px',
+                      background: isToday ? 'rgba(108,99,255,0.08)' : 'rgba(255,255,255,0.02)',
+                      border: isToday ? '1px solid rgba(108,99,255,0.3)' : '1px solid transparent',
+                    }}>
+                      <div style={{ fontSize: '12px', fontWeight: isToday ? 700 : 400, color: isToday ? '#6c63ff' : '#9090a8', marginBottom: '2px' }}>{day}</div>
+                      {daySchedules.slice(0, 2).map((s) => (
+                        <div key={s.id} style={{
+                          fontSize: '10px', padding: '1px 4px', borderRadius: '4px', marginBottom: '2px',
+                          background: s.completed ? 'rgba(74,222,128,0.15)' : 'rgba(108,99,255,0.2)',
+                          color: s.completed ? '#4ade80' : '#a78bfa',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          textDecoration: s.completed ? 'line-through' : 'none',
+                        }}>{s.title}</div>
+                      ))}
+                      {daySchedules.length > 2 && <div style={{ fontSize: '9px', color: '#6b6b80' }}>+{daySchedules.length - 2}개</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 일정 목록 + 추가 버튼 */}
+            <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 600 }}>일정 목록</h3>
+                <button onClick={() => setShowScheduleForm(true)} style={{
+                  padding: '7px 16px', fontSize: '13px', fontWeight: 600,
+                  background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
+                  border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(108,99,255,0.3)',
+                }}>+ 일정 추가</button>
+              </div>
+
+              {schedules.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#6b6b80', fontSize: '14px' }}>
+                  📅 아직 일정이 없어요. 일정을 추가해보세요!
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {schedules.map((s) => (
+                    <div key={s.id} className="schedule-row" style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '12px', borderRadius: '10px', background: '#111827',
+                    }}>
+                      <button onClick={() => handleToggle(s.id)} style={{
+                        width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
+                        background: s.completed ? '#4ade80' : 'transparent',
+                        border: `2px solid ${s.completed ? '#4ade80' : 'rgba(255,255,255,0.2)'}`,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {s.completed && <span style={{ fontSize: '10px', color: '#111827', fontWeight: 700 }}>✓</span>}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 500, color: s.completed ? '#6b6b80' : '#e8e8f0', textDecoration: s.completed ? 'line-through' : 'none', marginBottom: '2px' }}>
+                          {s.title}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#6b6b80' }}>
+                          <span>📅 {s.startDate} ~ {s.endDate}</span>
+                          {s.assigneeNickname && <span>👤 {s.assigneeNickname}</span>}
+                        </div>
+                        {s.description && <div style={{ fontSize: '12px', color: '#9090a8', marginTop: '2px' }}>{s.description}</div>}
+                      </div>
+                      <button onClick={() => handleDeleteSchedule(s.id)} style={{
+                        background: 'transparent', border: 'none', color: '#6b6b80',
+                        cursor: 'pointer', fontSize: '14px', padding: '4px',
+                        opacity: 0.6, transition: 'opacity 0.15s',
+                      }}>🗑</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 일정 추가 모달 */}
+      {showScheduleForm && (
+        <div className="modal-overlay" onClick={() => setShowScheduleForm(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+        }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
+            background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '460px', margin: '0 16px',
+          }}>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700, marginBottom: '24px' }}>일정 추가</h2>
+            <form onSubmit={handleCreateSchedule} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>제목 *</label>
+                <input type="text" value={scheduleForm.title} onChange={(e) => setScheduleForm({ ...scheduleForm, title: e.target.value })}
+                  placeholder="일정 제목" required maxLength={100} className="input-field"
+                  style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', transition: 'all 0.2s' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>시작일 *</label>
+                  <input type="date" value={scheduleForm.startDate} onChange={(e) => setScheduleForm({ ...scheduleForm, startDate: e.target.value })}
+                    required className="input-field"
+                    style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', colorScheme: 'dark', transition: 'all 0.2s' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>종료일 *</label>
+                  <input type="date" value={scheduleForm.endDate} onChange={(e) => setScheduleForm({ ...scheduleForm, endDate: e.target.value })}
+                    required className="input-field"
+                    style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', colorScheme: 'dark', transition: 'all 0.2s' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>담당자</label>
+                <select value={scheduleForm.assigneeId || ''} onChange={(e) => setScheduleForm({ ...scheduleForm, assigneeId: e.target.value ? Number(e.target.value) : null })}
+                  style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: scheduleForm.assigneeId ? '#e8e8f0' : '#6b6b80', fontSize: '14px', transition: 'all 0.2s' }}>
+                  <option value="">담당자 없음</option>
+                  {members.map((m) => <option key={m.userId} value={m.userId}>{m.nickname}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>설명</label>
+                <textarea value={scheduleForm.description} onChange={(e) => setScheduleForm({ ...scheduleForm, description: e.target.value })}
+                  placeholder="일정 설명 (선택)" maxLength={500} rows={3}
+                  style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', resize: 'none', fontFamily: 'inherit', transition: 'all 0.2s' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowScheduleForm(false)} style={{
+                  padding: '9px 18px', fontSize: '13px', background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer',
+                }}>취소</button>
+                <button type="submit" style={{
+                  padding: '9px 20px', fontSize: '13px', fontWeight: 600,
+                  background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
+                  border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(108,99,255,0.3)',
+                }}>추가</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
