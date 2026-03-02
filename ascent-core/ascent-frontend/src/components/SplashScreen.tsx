@@ -5,212 +5,215 @@ interface Props {
 }
 
 export default function SplashScreen({ onFinish }: Props) {
-  const [phase, setPhase] = useState<'idle' | 'strike' | 'logo' | 'text' | 'exit'>('idle')
+  const [phase, setPhase] = useState<'strike' | 'text' | 'exit'>('strike')
+  const [flashCount, setFlashCount] = useState(0)
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('strike'), 300)   // 번개 치기
-    const t2 = setTimeout(() => setPhase('logo'), 700)     // 로고 등장
-    const t3 = setTimeout(() => setPhase('text'), 1100)    // 텍스트 등장
-    const t4 = setTimeout(() => setPhase('exit'), 2500)    // 페이드아웃 시작
-    const t5 = setTimeout(() => onFinish(), 3100)          // 완전히 사라짐
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5) }
+    // 번개 번쩍임 반복
+    const flashes = [100, 250, 400, 600, 750, 950]
+    const timers = flashes.map((delay, i) =>
+      setTimeout(() => setFlashCount(i + 1), delay)
+    )
+    const t1 = setTimeout(() => setPhase('text'), 1100)
+    const t2 = setTimeout(() => setPhase('exit'), 2600)
+    const t3 = setTimeout(() => onFinish(), 3200)
+    return () => { timers.forEach(clearTimeout); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [onFinish])
+
+  const isFlashing = flashCount % 2 === 1 && phase === 'strike'
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: '#0a0e1a',
+      background: isFlashing ? '#1a1060' : '#0a0e1a',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       opacity: phase === 'exit' ? 0 : 1,
-      transition: phase === 'exit' ? 'opacity 0.6s ease' : 'none',
+      transition: phase === 'exit' ? 'opacity 0.6s ease' : 'background 0.05s ease',
       overflow: 'hidden',
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap');
 
-        /* 번개 플래시 */
-        @keyframes flashBg {
+        @keyframes boltFlicker {
           0%   { opacity: 0; }
           10%  { opacity: 1; }
-          20%  { opacity: 0.3; }
-          30%  { opacity: 0.9; }
-          50%  { opacity: 0; }
-          100% { opacity: 0; }
+          15%  { opacity: 0.4; }
+          20%  { opacity: 1; }
+          25%  { opacity: 0.6; }
+          30%  { opacity: 1; }
+          100% { opacity: 1; }
         }
-
-        /* 번개 볼트 드로우 */
-        @keyframes boltDraw {
-          from { stroke-dashoffset: 300; opacity: 0; }
-          to   { stroke-dashoffset: 0; opacity: 1; }
-        }
-
-        /* 번개 글로우 */
         @keyframes boltGlow {
-          0%   { filter: drop-shadow(0 0 8px #6c63ff) drop-shadow(0 0 20px #6c63ff); }
-          50%  { filter: drop-shadow(0 0 20px #a78bfa) drop-shadow(0 0 50px #6c63ff) drop-shadow(0 0 80px #4f46e5); }
-          100% { filter: drop-shadow(0 0 12px #6c63ff) drop-shadow(0 0 30px #6c63ff); }
+          0%, 100% { filter: drop-shadow(0 0 10px #a78bfa) drop-shadow(0 0 30px #6c63ff) drop-shadow(0 0 60px #4f46e5); }
+          50%       { filter: drop-shadow(0 0 20px #c4b5fd) drop-shadow(0 0 60px #a78bfa) drop-shadow(0 0 100px #6c63ff); }
         }
-
-        /* 로고 박스 등장 */
-        @keyframes logoAppear {
-          from { opacity: 0; transform: scale(0.7); }
-          to   { opacity: 1; transform: scale(1); }
+        @keyframes branchFlicker {
+          0%,100% { opacity: 0.6; }
+          50%      { opacity: 1; }
         }
-
-        /* 텍스트 등장 */
-        @keyframes textSlideUp {
-          from { opacity: 0; transform: translateY(16px); }
+        @keyframes textAppear {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes subAppear {
+          from { opacity: 0; transform: translateY(12px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-
-        /* 파티클 퍼짐 */
-        @keyframes particle1 { from { transform: translate(0,0); opacity:1; } to { transform: translate(-60px,-80px); opacity:0; } }
-        @keyframes particle2 { from { transform: translate(0,0); opacity:1; } to { transform: translate(60px,-80px); opacity:0; } }
-        @keyframes particle3 { from { transform: translate(0,0); opacity:1; } to { transform: translate(-80px,20px); opacity:0; } }
-        @keyframes particle4 { from { transform: translate(0,0); opacity:1; } to { transform: translate(80px,20px); opacity:0; } }
-        @keyframes particle5 { from { transform: translate(0,0); opacity:1; } to { transform: translate(-30px,80px); opacity:0; } }
-        @keyframes particle6 { from { transform: translate(0,0); opacity:1; } to { transform: translate(30px,80px); opacity:0; } }
-
-        /* 배경 글로우 */
-        @keyframes bgGlow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50%       { opacity: 0.6; transform: scale(1.1); }
-        }
-
-        /* 로딩 바 */
         @keyframes barFill {
           from { width: 0%; }
           to   { width: 100%; }
         }
-
-        .flash-overlay {
-          animation: flashBg 0.5s ease forwards;
+        @keyframes bgGlow {
+          0%,100% { opacity: 0.5; }
+          50%      { opacity: 0.9; }
         }
-        .bolt-path {
-          stroke-dasharray: 300;
-          animation: boltDraw 0.35s ease forwards, boltGlow 1.5s ease 0.35s infinite;
+        @keyframes shimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position: 200% center; }
         }
-        .logo-box {
-          animation: logoAppear 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+        .bolt-main { animation: boltFlicker 0.15s ease forwards, boltGlow 1s ease 0.3s infinite; }
+        .bolt-branch { animation: branchFlicker 0.2s ease infinite; }
+        .text-title { animation: textAppear 0.6s cubic-bezier(0.34,1.3,0.64,1) forwards; }
+        .text-sub { animation: subAppear 0.5s ease 0.2s both; }
+        .bg-glow { animation: bgGlow 1.5s ease infinite; }
+        .bar-fill { animation: barFill 1.8s cubic-bezier(0.4,0,0.2,1) 0.3s both; }
+        .shimmer-text {
+          background: linear-gradient(90deg, #e8e8f0 0%, #ffffff 40%, #a78bfa 50%, #6c63ff 60%, #e8e8f0 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer 2s linear infinite;
         }
-        .text-title {
-          animation: textSlideUp 0.5s ease forwards;
-        }
-        .text-sub {
-          animation: textSlideUp 0.5s ease 0.15s forwards;
-          opacity: 0;
-        }
-        .p1 { animation: particle1 0.6s ease 0.05s forwards; }
-        .p2 { animation: particle2 0.6s ease 0.05s forwards; }
-        .p3 { animation: particle3 0.6s ease 0.1s forwards; }
-        .p4 { animation: particle4 0.6s ease 0.1s forwards; }
-        .p5 { animation: particle5 0.6s ease 0.15s forwards; }
-        .p6 { animation: particle6 0.6s ease 0.15s forwards; }
-        .bg-glow { animation: bgGlow 2.5s ease infinite; }
-        .loading-bar-fill { animation: barFill 2s cubic-bezier(0.4,0,0.2,1) 0.8s both; }
       `}</style>
 
-      {/* 배경 글로우 */}
-      <div className="bg-glow" style={{
-        position: 'absolute', width: '700px', height: '700px', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(108,99,255,0.15) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* 번개 플래시 오버레이 */}
+      {/* 배경 방사형 글로우 */}
       {phase === 'strike' && (
-        <div className="flash-overlay" style={{
+        <div className="bg-glow" style={{
           position: 'absolute', inset: 0,
-          background: 'radial-gradient(ellipse at center, rgba(108,99,255,0.35) 0%, transparent 70%)',
+          background: isFlashing
+            ? 'radial-gradient(ellipse at 50% 0%, rgba(140,120,255,0.5) 0%, rgba(80,60,200,0.2) 40%, transparent 70%)'
+            : 'radial-gradient(ellipse at 50% 0%, rgba(108,99,255,0.2) 0%, transparent 60%)',
           pointerEvents: 'none',
+          transition: 'background 0.05s',
         }} />
       )}
 
-      {/* 번개 SVG (strike 페이즈부터 계속 표시) */}
-      {(phase === 'strike' || phase === 'logo' || phase === 'text') && (
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* 번개 SVG - 화면 전체 */}
+      {phase === 'strike' && (
+        <svg
+          viewBox="0 0 400 700"
+          style={{
+            position: 'absolute', top: 0, left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%', maxWidth: '500px', height: '100%',
+            pointerEvents: 'none',
+          }}
+        >
+          <defs>
+            <linearGradient id="mainBolt" x1="0" y1="0" x2="0.3" y2="1" gradientUnits="objectBoundingBox">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+              <stop offset="30%" stopColor="#c4b5fd" />
+              <stop offset="70%" stopColor="#6c63ff" />
+              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.6" />
+            </linearGradient>
+            <linearGradient id="branch1" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+              <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#6c63ff" stopOpacity="0.2" />
+            </linearGradient>
+            <linearGradient id="branch2" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+              <stop offset="0%" stopColor="#c4b5fd" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.1" />
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="strongGlow">
+              <feGaussianBlur stdDeviation="8" result="blur" />
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
 
-          {/* 번개 볼트 SVG */}
-          <svg width="90" height="120" viewBox="0 0 90 120" fill="none" style={{ marginBottom: '-10px' }}>
-            <path
-              className="bolt-path"
-              d="M55 5 L20 55 L42 55 L30 115 L75 50 L50 50 Z"
-              fill="url(#boltGrad)"
-              stroke="url(#strokeGrad)"
-              strokeWidth="1.5"
-              strokeLinejoin="round"
-            />
-            <defs>
-              <linearGradient id="boltGrad" x1="30" y1="0" x2="60" y2="120" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#a78bfa" />
-                <stop offset="50%" stopColor="#6c63ff" />
-                <stop offset="100%" stopColor="#4f46e5" />
-              </linearGradient>
-              <linearGradient id="strokeGrad" x1="30" y1="0" x2="60" y2="120" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#c4b5fd" />
-                <stop offset="100%" stopColor="#6c63ff" />
-              </linearGradient>
-            </defs>
-          </svg>
+          {/* 메인 번개 줄기 */}
+          <path
+            className="bolt-main"
+            d="M 210 0 L 225 80 L 245 78 L 195 200 L 215 198 L 160 350 L 185 345 L 140 500 L 165 495 L 120 700"
+            stroke="url(#mainBolt)" strokeWidth="3.5" fill="none"
+            strokeLinecap="round" strokeLinejoin="round"
+            filter="url(#strongGlow)"
+          />
+          {/* 메인 번개 코어 (밝은 흰색 중심) */}
+          <path
+            className="bolt-main"
+            d="M 210 0 L 225 80 L 245 78 L 195 200 L 215 198 L 160 350 L 185 345 L 140 500 L 165 495 L 120 700"
+            stroke="rgba(255,255,255,0.9)" strokeWidth="1.2" fill="none"
+            strokeLinecap="round" strokeLinejoin="round"
+          />
 
-          {/* 파티클 */}
-          {phase === 'strike' && (
-            <div style={{ position: 'absolute', top: '50%', left: '50%' }}>
-              {[
-                { cls: 'p1', color: '#a78bfa' }, { cls: 'p2', color: '#6c63ff' },
-                { cls: 'p3', color: '#63b3ff' }, { cls: 'p4', color: '#a78bfa' },
-                { cls: 'p5', color: '#6c63ff' }, { cls: 'p6', color: '#63b3ff' },
-              ].map(({ cls, color }) => (
-                <div key={cls} className={cls} style={{
-                  position: 'absolute', width: '4px', height: '4px', borderRadius: '50%',
-                  background: color, boxShadow: `0 0 6px ${color}`,
-                }} />
-              ))}
-            </div>
-          )}
+          {/* 가지 1 - 왼쪽 위 */}
+          <path
+            className="bolt-branch"
+            d="M 230 85 L 170 160 L 145 155 L 110 220"
+            stroke="url(#branch1)" strokeWidth="2" fill="none"
+            strokeLinecap="round" filter="url(#glow)"
+          />
+          <path className="bolt-branch" d="M 230 85 L 170 160 L 145 155 L 110 220" stroke="rgba(255,255,255,0.6)" strokeWidth="0.8" fill="none" strokeLinecap="round" />
 
-          {/* 로고 박스 + 텍스트 */}
-          {(phase === 'logo' || phase === 'text') && (
-            <div className="logo-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div style={{
-                width: '72px', height: '72px', borderRadius: '20px',
-                background: 'linear-gradient(135deg, #6c63ff 0%, #63b3ff 100%)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 30px rgba(108,99,255,0.5), 0 0 60px rgba(108,99,255,0.2)',
-              }}>
-                <svg width="36" height="48" viewBox="0 0 90 120" fill="none">
-                  <path d="M55 5 L20 55 L42 55 L30 115 L75 50 L50 50 Z" fill="white" />
-                </svg>
-              </div>
+          {/* 가지 2 - 오른쪽 중간 */}
+          <path
+            className="bolt-branch"
+            d="M 200 200 L 270 260 L 295 255 L 330 310"
+            stroke="url(#branch2)" strokeWidth="1.8" fill="none"
+            strokeLinecap="round" filter="url(#glow)"
+          />
+          <path className="bolt-branch" d="M 200 200 L 270 260 L 295 255 L 330 310" stroke="rgba(255,255,255,0.5)" strokeWidth="0.7" fill="none" strokeLinecap="round" />
 
-              {phase === 'text' && (
-                <div style={{ textAlign: 'center' }}>
-                  <div className="text-title" style={{
-                    fontFamily: "'Syne', sans-serif", fontSize: '38px', fontWeight: 800,
-                    background: 'linear-gradient(135deg, #e8e8f0 20%, #a78bfa 100%)',
-                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    letterSpacing: '-1px', lineHeight: 1.1,
-                  }}>Ascent</div>
-                  <div className="text-sub" style={{
-                    fontFamily: "'DM Sans', sans-serif", fontSize: '13px',
-                    color: '#6b6b80', marginTop: '6px', letterSpacing: '1px',
-                    textTransform: 'uppercase',
-                  }}>Team Collaboration Platform</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+          {/* 가지 3 - 왼쪽 중간 */}
+          <path
+            className="bolt-branch"
+            d="M 165 348 L 100 400 L 75 395 L 50 450"
+            stroke="url(#branch1)" strokeWidth="1.5" fill="none"
+            strokeLinecap="round" filter="url(#glow)"
+          />
+          <path className="bolt-branch" d="M 165 348 L 100 400 L 75 395 L 50 450" stroke="rgba(255,255,255,0.4)" strokeWidth="0.6" fill="none" strokeLinecap="round" />
+
+          {/* 가지 4 - 오른쪽 아래 */}
+          <path
+            className="bolt-branch"
+            d="M 150 498 L 220 540 L 250 535 L 290 590"
+            stroke="url(#branch2)" strokeWidth="1.3" fill="none"
+            strokeLinecap="round" filter="url(#glow)"
+          />
+
+          {/* 작은 잔가지들 */}
+          <path className="bolt-branch" d="M 195 200 L 155 230 L 135 225" stroke="#a78bfa" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.7" />
+          <path className="bolt-branch" d="M 160 350 L 200 380 L 215 375" stroke="#a78bfa" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.6" />
+          <path className="bolt-branch" d="M 225 80 L 260 110 L 280 105" stroke="#c4b5fd" strokeWidth="0.8" fill="none" strokeLinecap="round" opacity="0.5" />
+        </svg>
       )}
 
-      {/* 로딩 바 */}
-      {(phase === 'text') && (
-        <div style={{ marginTop: '48px', width: '180px' }}>
-          <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
-            <div className="loading-bar-fill" style={{
-              height: '100%', borderRadius: '2px',
-              background: 'linear-gradient(90deg, #6c63ff, #63b3ff)',
-            }} />
+      {/* 텍스트 단계 */}
+      {phase === 'text' && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div className="text-title" style={{ textAlign: 'center' }}>
+            <div className="shimmer-text" style={{
+              fontFamily: "'Syne', sans-serif", fontSize: '52px', fontWeight: 800,
+              letterSpacing: '-2px', lineHeight: 1,
+            }}>Ascent</div>
+            <div className="text-sub" style={{
+              fontFamily: "'DM Sans', sans-serif", fontSize: '13px',
+              color: '#6b6b80', marginTop: '10px', letterSpacing: '2px',
+              textTransform: 'uppercase',
+            }}>Team Collaboration Platform</div>
+          </div>
+
+          <div style={{ marginTop: '32px', width: '200px' }}>
+            <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div className="bar-fill" style={{
+                height: '100%', borderRadius: '2px',
+                background: 'linear-gradient(90deg, #6c63ff, #a78bfa, #63b3ff)',
+              }} />
+            </div>
           </div>
         </div>
       )}
