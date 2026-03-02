@@ -31,7 +31,6 @@ public class ProjectFileService {
     private final UserRepository userRepository;
     private final Cloudinary cloudinary;
 
-    // 파일 목록 조회
     public List<ProjectFileResponse> getFiles(Long projectId) {
         return projectFileRepository.findAllByProjectIdOrderByCreatedAtDesc(projectId)
                 .stream()
@@ -39,10 +38,8 @@ public class ProjectFileService {
                 .collect(Collectors.toList());
     }
 
-    // 파일 업로드
     @Transactional
     public ProjectFileResponse uploadFile(Long projectId, Long userId, MultipartFile file) {
-        // 멤버 확인
         projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
 
@@ -53,7 +50,6 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         try {
-            // Cloudinary 업로드
             @SuppressWarnings("unchecked")
             Map<String, Object> uploadResult = cloudinary.uploader().upload(
                     file.getBytes(),
@@ -65,12 +61,14 @@ public class ProjectFileService {
 
             String url = (String) uploadResult.get("secure_url");
             String publicId = (String) uploadResult.get("public_id");
+            // 업로드 결과에서 실제 resource_type 저장
+            String resourceType = (String) uploadResult.get("resource_type");
             String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
             ProjectFile projectFile = ProjectFile.create(
                     project, uploader,
                     file.getOriginalFilename(),
-                    url, publicId, fileType, file.getSize()
+                    url, publicId, fileType, resourceType, file.getSize()
             );
 
             projectFileRepository.save(projectFile);
@@ -81,7 +79,6 @@ public class ProjectFileService {
         }
     }
 
-    // 파일 삭제
     @Transactional
     public void deleteFile(Long projectId, Long fileId, Long userId) {
         projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
@@ -91,7 +88,9 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
         try {
-            cloudinary.uploader().destroy(file.getPublicId(), ObjectUtils.asMap("resource_type", "auto"));
+            // 저장된 resource_type으로 삭제
+            String resourceType = file.getResourceType() != null ? file.getResourceType() : "image";
+            cloudinary.uploader().destroy(file.getPublicId(), ObjectUtils.asMap("resource_type", resourceType));
         } catch (IOException e) {
             // Cloudinary 삭제 실패해도 DB에서는 삭제
         }

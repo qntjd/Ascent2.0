@@ -38,6 +38,9 @@ public class ProjectFile {
     @Column(nullable = false, length = 50)
     private String fileType;
 
+    @Column(length = 20)
+    private String resourceType;
+
     @Column(nullable = false)
     private Long fileSize;
 
@@ -45,7 +48,7 @@ public class ProjectFile {
     private LocalDateTime createdAt;
 
     public static ProjectFile create(Project project, User uploader, String originalName,
-                                      String url, String publicId, String fileType, Long fileSize) {
+                                      String url, String publicId, String fileType, String resourceType, Long fileSize) {
         ProjectFile f = new ProjectFile();
         f.project = project;
         f.uploader = uploader;
@@ -53,6 +56,7 @@ public class ProjectFile {
         f.url = url;
         f.publicId = publicId;
         f.fileType = fileType;
+        f.resourceType = resourceType;
         f.fileSize = fileSize;
         f.createdAt = LocalDateTime.now();
         return f;
