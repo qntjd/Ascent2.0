@@ -18,6 +18,7 @@ export const getCards = (projectId: number) =>
   api.get<ApiResponse<KanbanCard[]>>(`/projects/${projectId}/kanban`)
 
 export const createCard = (projectId: number, data: {
+  status?: 'TODO' | 'IN_PROGRESS' | 'DONE'
   title: string
   description?: string
   priority?: 'LOW' | 'MEDIUM' | 'HIGH'

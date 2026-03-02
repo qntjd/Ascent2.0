@@ -184,10 +184,10 @@ export default function DashboardPage() {
   }
 
   // 칸반
-  const handleCreateCard = async (status: 'TODO' | 'IN_PROGRESS' | 'DONE') => {
+  const handleCreateCard = async (colStatus: 'TODO' | 'IN_PROGRESS' | 'DONE') => {
     if (!cardForm.title.trim()) return
     try {
-      const res = await createCard(Number(projectId), {
+      const res = await createCard(Number(projectId), { status: colStatus,
         title: cardForm.title,
         description: cardForm.description || undefined,
         priority: cardForm.priority,
