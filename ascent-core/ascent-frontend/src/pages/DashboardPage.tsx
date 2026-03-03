@@ -8,13 +8,15 @@ import { getMe } from '../api/user'
 import { getSchedules, createSchedule, toggleSchedule, deleteSchedule } from '../api/schedule'
 import { getFiles, uploadFile, deleteFile } from '../api/file'
 import { getCards, createCard, moveCard, deleteCard } from '../api/kanban'
+import { getMeetings, getMeeting, createMeeting, linkActionItemToKanban, deleteMeeting } from '../api/meeting'
 import type { Schedule } from '../api/schedule'
 import type { ProjectFile } from '../api/file'
 import type { KanbanCard } from '../api/kanban'
+import type { Meeting, MeetingSummary } from '../api/meeting'
 import type { ChatMessage, ProjectMember, Project } from '../types'
 import useAuthStore from '../store/authStore'
 
-type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files'
+type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files' | 'meetings'
 
 const COLUMNS: { key: 'TODO' | 'IN_PROGRESS' | 'DONE'; label: string; color: string; bg: string }[] = [
   { key: 'TODO',        label: '할 일',   color: '#9090a8', bg: 'rgba(144,144,168,0.08)' },
@@ -69,6 +71,19 @@ export default function DashboardPage() {
   const [showCardScheduleForm, setShowCardScheduleForm] = useState(false)
   const [cardScheduleStartDate, setCardScheduleStartDate] = useState('')
 
+  // 회의록
+  const [meetings, setMeetings] = useState<MeetingSummary[]>([])
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
+  const [showMeetingForm, setShowMeetingForm] = useState(false)
+  const [meetingForm, setMeetingForm] = useState({
+    title: '', meetingDate: '', content: '', nextMeetingDate: '',
+    attendeeIds: [] as number[],
+    actionItems: [] as { title: string; assigneeId: number | null; dueDate: string }[],
+    decisions: [] as string[],
+  })
+  const [newActionItem, setNewActionItem] = useState({ title: '', assigneeId: null as number | null, dueDate: '' })
+  const [newDecision, setNewDecision] = useState('')
+
   // 태그
   const [addingTagUserId, setAddingTagUserId] = useState<number | null>(null)
   const [tagInput, setTagInput] = useState('')
@@ -76,7 +91,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [projectRes, memberRes, meRes, msgRes, scheduleRes, fileRes, cardRes] = await Promise.all([
+        const [projectRes, memberRes, meRes, msgRes, scheduleRes, fileRes, cardRes, meetingRes] = await Promise.all([
           getProject(Number(projectId)),
           getProjectMembers(Number(projectId)),
           getMe(),
@@ -84,6 +99,7 @@ export default function DashboardPage() {
           getSchedules(Number(projectId)),
           getFiles(Number(projectId)),
           getCards(Number(projectId)),
+          getMeetings(Number(projectId)),
         ])
         setProject(projectRes.data.data)
         setMembers(memberRes.data.data)
@@ -92,6 +108,7 @@ export default function DashboardPage() {
         setSchedules(scheduleRes.data.data)
         setFiles(fileRes.data.data)
         setCards(cardRes.data.data)
+        setMeetings(meetingRes.data.data)
         const me = memberRes.data.data.find((m: ProjectMember) => m.userId === meRes.data.id)
         if (me) setMyRole(me.role)
       } catch (err) { console.error(err) }
@@ -248,6 +265,51 @@ export default function DashboardPage() {
     setDragCardId(null)
   }
 
+  // 회의록
+  const handleCreateMeeting = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const res = await createMeeting(Number(projectId), {
+        title: meetingForm.title,
+        meetingDate: meetingForm.meetingDate,
+        content: meetingForm.content || undefined,
+        nextMeetingDate: meetingForm.nextMeetingDate || undefined,
+        attendeeIds: meetingForm.attendeeIds,
+        actionItems: meetingForm.actionItems.map(a => ({ title: a.title, assigneeId: a.assigneeId, dueDate: a.dueDate || undefined })),
+        decisions: meetingForm.decisions.filter(d => d.trim()),
+      })
+      setMeetings((prev) => [{ id: res.data.data.id, title: res.data.data.title, meetingDate: res.data.data.meetingDate, authorNickname: res.data.data.authorNickname, actionItemCount: res.data.data.actionItems.length, decisionCount: res.data.data.decisions.length, createdAt: res.data.data.createdAt }, ...prev])
+      setShowMeetingForm(false)
+      setMeetingForm({ title: '', meetingDate: '', content: '', nextMeetingDate: '', attendeeIds: [], actionItems: [], decisions: [] })
+    } catch { alert('회의록 생성 실패') }
+  }
+
+  const handleSelectMeeting = async (meetingId: number) => {
+    try {
+      const res = await getMeeting(meetingId)
+      setSelectedMeeting(res.data.data)
+    } catch { alert('불러오기 실패') }
+  }
+
+  const handleLinkKanban = async (meetingId: number, actionItemId: number) => {
+    try {
+      const res = await linkActionItemToKanban(Number(projectId), meetingId, actionItemId)
+      setSelectedMeeting(res.data.data)
+      const cardRes = await import('../api/kanban').then(m => m.getCards(Number(projectId)))
+      setCards(cardRes.data.data)
+      alert('칸반 보드에 추가됐어요! 🗂️')
+    } catch { alert('칸반 연동 실패') }
+  }
+
+  const handleDeleteMeeting = async (meetingId: number) => {
+    if (!confirm('회의록을 삭제할까요?')) return
+    try {
+      await deleteMeeting(Number(projectId), meetingId)
+      setMeetings((prev) => prev.filter(m => m.id !== meetingId))
+      setSelectedMeeting(null)
+    } catch { alert('삭제 실패') }
+  }
+
   const getColumnCards = (status: 'TODO' | 'IN_PROGRESS' | 'DONE') =>
     cards.filter((c) => c.status === status).sort((a, b) => a.position - b.position)
 
@@ -302,9 +364,10 @@ export default function DashboardPage() {
   const tabConfig: { key: Tab; label: string; icon: string }[] = [
     { key: 'dashboard', label: '대시보드', icon: '⊞' },
     { key: 'chat',      label: '채팅',     icon: '💬' },
-    { key: 'kanban',    label: '할일',     icon: '🗂️' },
+    { key: 'kanban',    label: '칸반',     icon: '🗂️' },
     { key: 'schedule',  label: '일정',     icon: '📅' },
     { key: 'files',     label: `파일 ${files.length > 0 ? `(${files.length})` : ''}`, icon: '📎' },
+    { key: 'meetings',  label: `회의록 ${meetings.length > 0 ? `(${meetings.length})` : ''}`, icon: '📝' },
   ]
 
   return (
@@ -722,6 +785,126 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* 회의록 탭 */}
+      {tab === 'meetings' && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+          <div style={{ maxWidth: '900px', margin: '0 auto', display: 'grid', gap: '20px' }}>
+            {!selectedMeeting ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700 }}>회의록</h2>
+                  <button onClick={() => setShowMeetingForm(true)} style={{ padding: '8px 18px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 2px 8px rgba(108,99,255,0.3)' }}>+ 회의록 작성</button>
+                </div>
+                {meetings.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '80px 24px', background: '#1f2937', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
+                    <p style={{ color: '#6b6b80', fontSize: '14px' }}>아직 회의록이 없어요</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {meetings.map((m) => (
+                      <div key={m.id} onClick={() => handleSelectMeeting(m.id)}
+                        style={{ background: '#1f2937', borderRadius: '12px', padding: '18px 20px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(108,99,255,0.3)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontSize: '15px', fontWeight: 600, color: '#e8e8f0', marginBottom: '6px' }}>{m.title}</div>
+                            <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#6b6b80' }}>
+                              <span>📅 {m.meetingDate}</span>
+                              <span>✍️ {m.authorNickname}</span>
+                              {m.actionItemCount > 0 && <span style={{ color: '#a78bfa' }}>⚡ 액션 {m.actionItemCount}개</span>}
+                              {m.decisionCount > 0 && <span style={{ color: '#4ade80' }}>✅ 결정 {m.decisionCount}개</span>}
+                            </div>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteMeeting(m.id) }} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', opacity: 0.6, padding: '0' }}>🗑</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button onClick={() => setSelectedMeeting(null)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#9090a8', cursor: 'pointer', padding: '6px 12px', fontSize: '13px' }}>← 목록</button>
+                  <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '17px', fontWeight: 700, flex: 1 }}>{selectedMeeting.title}</h2>
+                  <button onClick={() => handleDeleteMeeting(selectedMeeting.id)} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', opacity: 0.6 }}>🗑 삭제</button>
+                </div>
+
+                {/* 기본 정보 */}
+                <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: selectedMeeting.content ? '20px' : '0' }}>
+                    <div><div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '4px' }}>회의 날짜</div><div style={{ fontSize: '14px', color: '#e8e8f0' }}>📅 {selectedMeeting.meetingDate}</div></div>
+                    <div><div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '4px' }}>작성자</div><div style={{ fontSize: '14px', color: '#e8e8f0' }}>✍️ {selectedMeeting.authorNickname}</div></div>
+                    {selectedMeeting.nextMeetingDate && <div><div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '4px' }}>다음 회의</div><div style={{ fontSize: '14px', color: '#a78bfa' }}>📅 {selectedMeeting.nextMeetingDate}</div></div>}
+                  </div>
+                  {selectedMeeting.attendees.length > 0 && (
+                    <div style={{ marginBottom: selectedMeeting.content ? '20px' : '0' }}>
+                      <div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '8px' }}>참석자</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {selectedMeeting.attendees.map(a => (
+                          <span key={a.userId} style={{ fontSize: '12px', padding: '3px 10px', borderRadius: '20px', background: 'rgba(108,99,255,0.1)', color: '#a78bfa', border: '1px solid rgba(108,99,255,0.2)' }}>👤 {a.nickname}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedMeeting.content && (
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>회의 내용</div>
+                      <div style={{ fontSize: '14px', color: '#d1d5db', lineHeight: 1.7, whiteSpace: 'pre-wrap', padding: '16px', background: '#111827', borderRadius: '8px' }}>{selectedMeeting.content}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 결정 사항 */}
+                {selectedMeeting.decisions.length > 0 && (
+                  <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(74,222,128,0.15)' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#4ade80', marginBottom: '14px' }}>✅ 결정 사항</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {selectedMeeting.decisions.map((d, i) => (
+                        <div key={d.id} style={{ display: 'flex', gap: '10px', padding: '10px 14px', background: 'rgba(74,222,128,0.05)', borderRadius: '8px', border: '1px solid rgba(74,222,128,0.1)' }}>
+                          <span style={{ fontSize: '12px', color: '#4ade80', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: '14px', color: '#d1d5db' }}>{d.content}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 액션 아이템 */}
+                {selectedMeeting.actionItems.length > 0 && (
+                  <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(108,99,255,0.15)' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#a78bfa', marginBottom: '14px' }}>⚡ 액션 아이템</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {selectedMeeting.actionItems.map((item) => (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: 'rgba(108,99,255,0.05)', borderRadius: '8px', border: '1px solid rgba(108,99,255,0.1)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '14px', color: '#e8e8f0', marginBottom: '4px' }}>{item.title}</div>
+                            <div style={{ display: 'flex', gap: '10px', fontSize: '12px', color: '#6b6b80' }}>
+                              {item.assigneeNickname && <span>👤 {item.assigneeNickname}</span>}
+                              {item.dueDate && <span>📅 {item.dueDate}</span>}
+                            </div>
+                          </div>
+                          {item.linkedToKanban ? (
+                            <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '20px', background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)', flexShrink: 0 }}>🗂️ 칸반 연동됨</span>
+                          ) : (
+                            <button onClick={() => handleLinkKanban(selectedMeeting.id, item.id)}
+                              style={{ fontSize: '11px', padding: '5px 12px', borderRadius: '8px', background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', color: 'white', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
+                              🗂️ 칸반에 추가
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 칸반 카드 상세 모달 */}
       {selectedCard && (
         <div className="modal-overlay" onClick={() => { setSelectedCard(null); setShowCardScheduleForm(false) }}
@@ -824,6 +1007,107 @@ export default function DashboardPage() {
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowScheduleForm(false)} style={{ padding: '9px 18px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>취소</button>
                 <button type="submit" style={{ padding: '9px 20px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 12px rgba(108,99,255,0.3)' }}>추가</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* 회의록 작성 모달 */}
+      {showMeetingForm && (
+        <div className="modal-overlay" onClick={() => setShowMeetingForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, overflowY: 'auto', padding: '24px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '600px', margin: 'auto' }}>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700, marginBottom: '24px' }}>📝 회의록 작성</h2>
+            <form onSubmit={handleCreateMeeting} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+              {/* 기본 정보 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>회의 제목 *</label>
+                  <input type="text" value={meetingForm.title} onChange={(e) => setMeetingForm({ ...meetingForm, title: e.target.value })} placeholder="회의 제목" required maxLength={200} className="input-field" style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>회의 날짜 *</label>
+                  <input type="date" value={meetingForm.meetingDate} onChange={(e) => setMeetingForm({ ...meetingForm, meetingDate: e.target.value })} required className="input-field" style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', colorScheme: 'dark' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>다음 회의 일정</label>
+                  <input type="date" value={meetingForm.nextMeetingDate} onChange={(e) => setMeetingForm({ ...meetingForm, nextMeetingDate: e.target.value })} className="input-field" style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: meetingForm.nextMeetingDate ? '#e8e8f0' : '#6b6b80', fontSize: '14px', colorScheme: 'dark' }} />
+                </div>
+              </div>
+
+              {/* 참석자 */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>참석자</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {members.map((m) => (
+                    <button key={m.userId} type="button"
+                      onClick={() => setMeetingForm(prev => ({ ...prev, attendeeIds: prev.attendeeIds.includes(m.userId) ? prev.attendeeIds.filter(id => id !== m.userId) : [...prev.attendeeIds, m.userId] }))}
+                      style={{ padding: '5px 12px', fontSize: '12px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', background: meetingForm.attendeeIds.includes(m.userId) ? 'rgba(108,99,255,0.2)' : 'transparent', borderColor: meetingForm.attendeeIds.includes(m.userId) ? '#6c63ff' : 'rgba(255,255,255,0.1)', color: meetingForm.attendeeIds.includes(m.userId) ? '#a78bfa' : '#9090a8' }}>
+                      {meetingForm.attendeeIds.includes(m.userId) ? '✓ ' : ''}{m.nickname}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 회의 내용 */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>회의 내용</label>
+                <textarea value={meetingForm.content} onChange={(e) => setMeetingForm({ ...meetingForm, content: e.target.value })} placeholder="회의 내용을 입력하세요..." rows={4} style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', resize: 'none', fontFamily: 'inherit', lineHeight: 1.6 }} />
+              </div>
+
+              {/* 결정 사항 */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>결정 사항</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                  {meetingForm.decisions.map((d, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: '#111827', borderRadius: '8px' }}>
+                      <span style={{ flex: 1, fontSize: '13px', color: '#e8e8f0' }}>{d}</span>
+                      <button type="button" onClick={() => setMeetingForm(prev => ({ ...prev, decisions: prev.decisions.filter((_, j) => j !== i) }))} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="text" value={newDecision} onChange={(e) => setNewDecision(e.target.value)} placeholder="결정 사항 입력..." className="input-field"
+                    style={{ flex: 1, padding: '8px 12px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#e8e8f0', fontSize: '13px' }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newDecision.trim()) { setMeetingForm(prev => ({ ...prev, decisions: [...prev.decisions, newDecision.trim()] })); setNewDecision('') } } }} />
+                  <button type="button" onClick={() => { if (newDecision.trim()) { setMeetingForm(prev => ({ ...prev, decisions: [...prev.decisions, newDecision.trim()] })); setNewDecision('') } }} style={{ padding: '8px 14px', fontSize: '12px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '8px', color: '#4ade80', cursor: 'pointer', fontWeight: 600 }}>+ 추가</button>
+                </div>
+              </div>
+
+              {/* 액션 아이템 */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>액션 아이템</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                  {meetingForm.actionItems.map((item, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: '#111827', borderRadius: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '13px', color: '#e8e8f0' }}>{item.title}</div>
+                        <div style={{ fontSize: '11px', color: '#6b6b80', marginTop: '2px' }}>
+                          {members.find(m => m.userId === item.assigneeId)?.nickname && <span>👤 {members.find(m => m.userId === item.assigneeId)?.nickname} </span>}
+                          {item.dueDate && <span>📅 {item.dueDate}</span>}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setMeetingForm(prev => ({ ...prev, actionItems: prev.actionItems.filter((_, j) => j !== i) }))} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '6px', alignItems: 'center' }}>
+                  <input type="text" value={newActionItem.title} onChange={(e) => setNewActionItem(prev => ({ ...prev, title: e.target.value }))} placeholder="액션 아이템..." className="input-field"
+                    style={{ padding: '8px 12px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#e8e8f0', fontSize: '13px' }} />
+                  <select value={newActionItem.assigneeId || ''} onChange={(e) => setNewActionItem(prev => ({ ...prev, assigneeId: e.target.value ? Number(e.target.value) : null }))}
+                    style={{ padding: '8px 10px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: newActionItem.assigneeId ? '#e8e8f0' : '#6b6b80', fontSize: '12px' }}>
+                    <option value="">담당자</option>
+                    {members.map(m => <option key={m.userId} value={m.userId}>{m.nickname}</option>)}
+                  </select>
+                  <input type="date" value={newActionItem.dueDate} onChange={(e) => setNewActionItem(prev => ({ ...prev, dueDate: e.target.value }))}
+                    style={{ padding: '8px 10px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: newActionItem.dueDate ? '#e8e8f0' : '#6b6b80', fontSize: '12px', colorScheme: 'dark' }} />
+                  <button type="button" onClick={() => { if (newActionItem.title.trim()) { setMeetingForm(prev => ({ ...prev, actionItems: [...prev.actionItems, { ...newActionItem }] })); setNewActionItem({ title: '', assigneeId: null, dueDate: '' }) } }} style={{ padding: '8px 14px', fontSize: '12px', background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ 추가</button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowMeetingForm(false)} style={{ padding: '10px 20px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>취소</button>
+                <button type="submit" style={{ padding: '10px 24px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 12px rgba(108,99,255,0.3)' }}>저장</button>
               </div>
             </form>
           </div>
