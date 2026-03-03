@@ -24,10 +24,10 @@ type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files' | 'meetings'
 const TAB_CONFIG: { key: Tab; label: string; icon: string }[] = [
   { key: 'dashboard', label: '대시보드', icon: '⊞' },
   { key: 'chat',      label: '채팅',     icon: '💬' },
-  { key: 'kanban',    label: '칸반',     icon: '🗂️' },
+  { key: 'kanban',    label: '할일',     icon: '🗂️' },
   { key: 'schedule',  label: '일정',     icon: '📅' },
-  { key: 'files',     label: '파일',     icon: '📎' },
   { key: 'meetings',  label: '회의록',   icon: '📝' },
+  { key: 'files',     label: '파일',     icon: '📎' },
 ]
 
 export default function DashboardPage() {
