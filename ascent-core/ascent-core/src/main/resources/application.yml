@@ -1,6 +1,6 @@
 jwt:
   secret: ${JWT_SECRET:ascent-secret-key-ascent-secret-key-ascent-secret-key-1234567890}
-  access-expiration: ${JWT_ACCESS_EXPIRATION:1800000}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:21600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:1209600000}
 
 spring:

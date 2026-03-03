@@ -19,6 +19,7 @@ export default function LoginPage() {
     try {
       const res = await login(email, password)
       setAuth(res.data.accessToken)
+      localStorage.setItem('refreshToken', res.data.refreshToken)
       navigate('/projects')
     } catch (err: any) {
       setError(err.response?.data?.message || '이메일 또는 비밀번호를 확인해주세요.')
