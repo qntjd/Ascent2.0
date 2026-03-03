@@ -17,9 +17,9 @@ import useAuthStore from '../store/authStore'
 type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files'
 
 const COLUMNS: { key: 'TODO' | 'IN_PROGRESS' | 'DONE'; label: string; color: string; bg: string }[] = [
-  { key: 'TODO',        label: '할 일',    color: '#9090a8', bg: 'rgba(144,144,168,0.08)' },
-  { key: 'IN_PROGRESS', label: '진행 중',  color: '#fbbf24', bg: 'rgba(251,191,36,0.08)'  },
-  { key: 'DONE',        label: '완료',     color: '#4ade80', bg: 'rgba(74,222,128,0.08)'  },
+  { key: 'TODO',        label: '할 일',   color: '#9090a8', bg: 'rgba(144,144,168,0.08)' },
+  { key: 'IN_PROGRESS', label: '진행 중', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)'  },
+  { key: 'DONE',        label: '완료',    color: '#4ade80', bg: 'rgba(74,222,128,0.08)'  },
 ]
 
 const PRIORITY_MAP = {
@@ -63,6 +63,11 @@ export default function DashboardPage() {
   const [showCardForm, setShowCardForm] = useState<'TODO' | 'IN_PROGRESS' | 'DONE' | null>(null)
   const [cardForm, setCardForm] = useState({ title: '', description: '', priority: 'MEDIUM' as 'LOW'|'MEDIUM'|'HIGH', dueDate: '', assigneeId: null as number | null })
   const [dragCardId, setDragCardId] = useState<number | null>(null)
+
+  // 칸반 카드 상세
+  const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null)
+  const [showCardScheduleForm, setShowCardScheduleForm] = useState(false)
+  const [cardScheduleStartDate, setCardScheduleStartDate] = useState('')
 
   // 태그
   const [addingTagUserId, setAddingTagUserId] = useState<number | null>(null)
@@ -187,7 +192,8 @@ export default function DashboardPage() {
   const handleCreateCard = async (colStatus: 'TODO' | 'IN_PROGRESS' | 'DONE') => {
     if (!cardForm.title.trim()) return
     try {
-      const res = await createCard(Number(projectId), { status: colStatus,
+      const res = await createCard(Number(projectId), {
+        status: colStatus,
         title: cardForm.title,
         description: cardForm.description || undefined,
         priority: cardForm.priority,
@@ -204,6 +210,7 @@ export default function DashboardPage() {
     try {
       const res = await moveCard(Number(projectId), cardId, { status: newStatus, position: 999 })
       setCards((prev) => prev.map((c) => c.id === cardId ? res.data.data : c))
+      if (selectedCard?.id === cardId) setSelectedCard(res.data.data)
     } catch { alert('이동 실패') }
   }
 
@@ -212,7 +219,26 @@ export default function DashboardPage() {
     try {
       await deleteCard(Number(projectId), cardId)
       setCards((prev) => prev.filter((c) => c.id !== cardId))
+      if (selectedCard?.id === cardId) setSelectedCard(null)
     } catch { alert('삭제 실패') }
+  }
+
+  const handleAddToSchedule = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedCard) return
+    try {
+      const res = await createSchedule(Number(projectId), {
+        title: selectedCard.title,
+        description: selectedCard.description || '',
+        startDate: cardScheduleStartDate,
+        endDate: selectedCard.dueDate || cardScheduleStartDate,
+        assigneeId: selectedCard.assigneeId || null,
+      })
+      setSchedules((prev) => [...prev, res.data.data])
+      setShowCardScheduleForm(false)
+      setSelectedCard(null)
+      alert('일정에 추가됐어요! 📅 일정 탭에서 확인하세요.')
+    } catch { alert('일정 추가 실패') }
   }
 
   const handleDragStart = (cardId: number) => setDragCardId(cardId)
@@ -276,7 +302,7 @@ export default function DashboardPage() {
   const tabConfig: { key: Tab; label: string; icon: string }[] = [
     { key: 'dashboard', label: '대시보드', icon: '⊞' },
     { key: 'chat',      label: '채팅',     icon: '💬' },
-    { key: 'kanban',    label: '칸반',     icon: '🗂️' },
+    { key: 'kanban',    label: '할일',     icon: '🗂️' },
     { key: 'schedule',  label: '일정',     icon: '📅' },
     { key: 'files',     label: `파일 ${files.length > 0 ? `(${files.length})` : ''}`, icon: '📎' },
   ]
@@ -303,9 +329,8 @@ export default function DashboardPage() {
         .tag-delete:hover { opacity: 1 !important; }
         .modal-overlay { animation: fadeIn 0.2s ease; }
         .modal-content { animation: fadeUp 0.25s ease; }
-        .kanban-card { animation: fadeUp 0.2s ease; cursor: grab; transition: box-shadow 0.15s, transform 0.15s; }
+        .kanban-card { animation: fadeUp 0.2s ease; cursor: pointer; transition: box-shadow 0.15s, transform 0.15s; }
         .kanban-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important; transform: translateY(-2px); }
-        .kanban-card:active { cursor: grabbing; }
         .drop-zone { transition: background 0.15s, border-color 0.15s; }
         .drop-zone.drag-over { background: rgba(108,99,255,0.08) !important; border-color: rgba(108,99,255,0.3) !important; }
         ::-webkit-scrollbar { width: 4px; }
@@ -333,7 +358,7 @@ export default function DashboardPage() {
             {connected ? '연결됨' : '연결 중...'}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0' }}>
+        <div style={{ display: 'flex' }}>
           {tabConfig.map(({ key, label, icon }) => (
             <button key={key} onClick={() => setTab(key)} className="tab-btn" style={{
               padding: '10px 18px', fontSize: '13px', fontWeight: 500,
@@ -511,7 +536,6 @@ export default function DashboardPage() {
                   onDrop={(e) => { e.currentTarget.classList.remove('drag-over'); handleDrop(col.key) }}
                   style={{ flex: 1, display: 'flex', flexDirection: 'column', background: col.bg, borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}
                 >
-                  {/* 컬럼 헤더 */}
                   <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -519,11 +543,9 @@ export default function DashboardPage() {
                         <span style={{ fontSize: '11px', padding: '1px 7px', borderRadius: '20px', background: 'rgba(255,255,255,0.06)', color: '#6b6b80' }}>{colCards.length}</span>
                       </div>
                       <button onClick={() => { setShowCardForm(col.key); setCardForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: null }) }}
-                        style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#9090a8', cursor: 'pointer', fontSize: '16px', width: '26px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>+</button>
+                        style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#9090a8', cursor: 'pointer', fontSize: '16px', width: '26px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
                   </div>
-
-                  {/* 카드 목록 */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {colCards.map((card) => {
                       const p = PRIORITY_MAP[card.priority]
@@ -531,12 +553,13 @@ export default function DashboardPage() {
                       return (
                         <div key={card.id} className="kanban-card"
                           draggable
-                          onDragStart={() => handleDragStart(card.id)}
+                          onClick={() => { setSelectedCard(card); setShowCardScheduleForm(false); setCardScheduleStartDate(card.dueDate || '') }}
+                          onDragStart={(e) => { e.stopPropagation(); handleDragStart(card.id) }}
                           style={{ background: '#1f2937', borderRadius: '10px', padding: '12px', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
                         >
                           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
                             <span style={{ fontSize: '13px', fontWeight: 500, color: '#e8e8f0', lineHeight: 1.4, flex: 1 }}>{card.title}</span>
-                            <button onClick={() => handleDeleteCard(card.id)} style={{ background: 'transparent', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: '12px', padding: '0', flexShrink: 0, opacity: 0.6 }}>✕</button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteCard(card.id) }} style={{ background: 'transparent', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: '12px', padding: '0', flexShrink: 0, opacity: 0.6 }}>✕</button>
                           </div>
                           {card.description && <p style={{ fontSize: '12px', color: '#9090a8', marginBottom: '8px', lineHeight: 1.4 }}>{card.description}</p>}
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
@@ -544,10 +567,9 @@ export default function DashboardPage() {
                             {card.assigneeNickname && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '20px', background: 'rgba(108,99,255,0.1)', color: '#a78bfa' }}>👤 {card.assigneeNickname}</span>}
                             {card.dueDate && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '20px', background: isOverdue ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.06)', color: isOverdue ? '#f87171' : '#6b6b80' }}>📅 {card.dueDate}</span>}
                           </div>
-                          {/* 이동 버튼 */}
                           <div style={{ display: 'flex', gap: '4px', marginTop: '10px' }}>
                             {COLUMNS.filter((c) => c.key !== col.key).map((target) => (
-                              <button key={target.key} onClick={() => handleMoveCard(card.id, target.key)}
+                              <button key={target.key} onClick={(e) => { e.stopPropagation(); handleMoveCard(card.id, target.key) }}
                                 style={{ flex: 1, padding: '4px', fontSize: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: target.color, cursor: 'pointer', fontWeight: 500 }}>
                                 → {target.label}
                               </button>
@@ -556,8 +578,6 @@ export default function DashboardPage() {
                         </div>
                       )
                     })}
-
-                    {/* 카드 추가 폼 */}
                     {showCardForm === col.key && (
                       <div style={{ background: '#1f2937', borderRadius: '10px', padding: '12px', border: '1px solid rgba(108,99,255,0.3)' }}>
                         <input type="text" value={cardForm.title} onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
@@ -588,7 +608,6 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     )}
-
                     {colCards.length === 0 && showCardForm !== col.key && (
                       <div style={{ textAlign: 'center', padding: '24px 0', color: '#4b5563', fontSize: '12px' }}>카드가 없어요</div>
                     )}
@@ -699,6 +718,74 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 칸반 카드 상세 모달 */}
+      {selectedCard && (
+        <div className="modal-overlay" onClick={() => { setSelectedCard(null); setShowCardScheduleForm(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}
+            style={{ background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '460px', margin: '0 16px' }}>
+            {/* 헤더 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: PRIORITY_MAP[selectedCard.priority].bg, color: PRIORITY_MAP[selectedCard.priority].color, fontWeight: 500 }}>{PRIORITY_MAP[selectedCard.priority].label}</span>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: COLUMNS.find(c => c.key === selectedCard.status)?.bg, color: COLUMNS.find(c => c.key === selectedCard.status)?.color }}>{COLUMNS.find(c => c.key === selectedCard.status)?.label}</span>
+                </div>
+                <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700, color: '#e8e8f0', lineHeight: 1.3 }}>{selectedCard.title}</h2>
+              </div>
+              <button onClick={() => { setSelectedCard(null); setShowCardScheduleForm(false) }} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '18px', padding: '0 0 0 12px' }}>✕</button>
+            </div>
+
+            {/* 설명 */}
+            {selectedCard.description && (
+              <p style={{ fontSize: '14px', color: '#9090a8', lineHeight: 1.6, marginBottom: '16px', padding: '12px', background: '#111827', borderRadius: '8px' }}>{selectedCard.description}</p>
+            )}
+
+            {/* 정보 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              {selectedCard.assigneeNickname && (
+                <div style={{ padding: '10px 12px', background: '#111827', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '4px' }}>담당자</div>
+                  <div style={{ fontSize: '13px', color: '#e8e8f0' }}>👤 {selectedCard.assigneeNickname}</div>
+                </div>
+              )}
+              {selectedCard.dueDate && (
+                <div style={{ padding: '10px 12px', background: '#111827', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#6b6b80', marginBottom: '4px' }}>마감일</div>
+                  <div style={{ fontSize: '13px', color: new Date(selectedCard.dueDate) < new Date() && selectedCard.status !== 'DONE' ? '#f87171' : '#e8e8f0' }}>📅 {selectedCard.dueDate}</div>
+                </div>
+              )}
+            </div>
+
+            {/* 일정 연동 */}
+            {!showCardScheduleForm ? (
+              <button onClick={() => { setShowCardScheduleForm(true); setCardScheduleStartDate(selectedCard.dueDate || '') }}
+                style={{ width: '100%', padding: '11px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 12px rgba(108,99,255,0.3)' }}>
+                📅 일정에 추가
+              </button>
+            ) : (
+              <form onSubmit={handleAddToSchedule} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', background: '#111827', borderRadius: '10px', border: '1px solid rgba(108,99,255,0.2)' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#a78bfa' }}>📅 일정으로 추가</div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px' }}>시작일 *</label>
+                  <input type="date" value={cardScheduleStartDate} onChange={(e) => setCardScheduleStartDate(e.target.value)} required className="input-field"
+                    style={{ width: '100%', padding: '9px 12px', background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#e8e8f0', fontSize: '13px', colorScheme: 'dark' }} />
+                </div>
+                {selectedCard.dueDate && (
+                  <div style={{ fontSize: '12px', color: '#6b6b80', padding: '8px 10px', background: 'rgba(108,99,255,0.08)', borderRadius: '6px' }}>
+                    종료일: <span style={{ color: '#a78bfa' }}>{selectedCard.dueDate}</span> (마감일 자동 적용)
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" style={{ flex: 1, padding: '9px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>추가</button>
+                  <button type="button" onClick={() => setShowCardScheduleForm(false)} style={{ padding: '9px 14px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>취소</button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
