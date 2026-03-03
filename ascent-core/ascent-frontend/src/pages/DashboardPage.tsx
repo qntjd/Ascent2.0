@@ -795,33 +795,78 @@ export default function DashboardPage() {
                   <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700 }}>회의록</h2>
                   <button onClick={() => setShowMeetingForm(true)} style={{ padding: '8px 18px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 2px 8px rgba(108,99,255,0.3)' }}>+ 회의록 작성</button>
                 </div>
+
+                {/* 템플릿 선택 */}
+                <div style={{ background: '#1f2937', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '12px', color: '#6b6b80', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>빠른 시작 템플릿</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                    {[
+                      { icon: '🗓️', label: '정기 회의', content: '## 진행 사항\n\n## 논의 사항\n\n## 다음 회의 안건', decisions: [], actionItems: [] },
+                      { icon: '🚀', label: '스프린트 계획', content: '## 이번 스프린트 목표\n\n## 작업 분배\n\n## 주의 사항', decisions: [], actionItems: [] },
+                      { icon: '🔍', label: '회고 회의', content: '## 잘된 점 (Keep)\n\n## 개선할 점 (Problem)\n\n## 시도할 것 (Try)', decisions: [], actionItems: [] },
+                    ].map((tpl) => (
+                      <button key={tpl.label} type="button"
+                        onClick={() => {
+                          setMeetingForm(prev => ({ ...prev, content: tpl.content, meetingDate: new Date().toISOString().split('T')[0] }))
+                          setShowMeetingForm(true)
+                        }}
+                        style={{ padding: '14px', background: '#111827', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(108,99,255,0.3)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}>
+                        <div style={{ fontSize: '20px', marginBottom: '6px' }}>{tpl.icon}</div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e8e8f0' }}>{tpl.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 날짜별 그룹 */}
                 {meetings.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '80px 24px', background: '#1f2937', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ textAlign: 'center', padding: '60px 24px', background: '#1f2937', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
                     <p style={{ color: '#6b6b80', fontSize: '14px' }}>아직 회의록이 없어요</p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {meetings.map((m) => (
-                      <div key={m.id} onClick={() => handleSelectMeeting(m.id)}
-                        style={{ background: '#1f2937', borderRadius: '12px', padding: '18px 20px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', transition: 'border-color 0.15s' }}
-                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(108,99,255,0.3)')}
-                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <div style={{ fontSize: '15px', fontWeight: 600, color: '#e8e8f0', marginBottom: '6px' }}>{m.title}</div>
-                            <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#6b6b80' }}>
-                              <span>📅 {m.meetingDate}</span>
-                              <span>✍️ {m.authorNickname}</span>
-                              {m.actionItemCount > 0 && <span style={{ color: '#a78bfa' }}>⚡ 액션 {m.actionItemCount}개</span>}
-                              {m.decisionCount > 0 && <span style={{ color: '#4ade80' }}>✅ 결정 {m.decisionCount}개</span>}
+                  Object.entries(
+                    meetings.reduce((acc, m) => {
+                      const key = m.meetingDate.slice(0, 7) // "2026-03"
+                      if (!acc[key]) acc[key] = []
+                      acc[key].push(m)
+                      return acc
+                    }, {} as Record<string, typeof meetings>)
+                  ).sort(([a], [b]) => b.localeCompare(a)).map(([yearMonth, group]) => {
+                    const [y, mo] = yearMonth.split('-')
+                    return (
+                      <div key={yearMonth}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#6c63ff' }}>{y}년 {parseInt(mo)}월</span>
+                          <span style={{ fontSize: '11px', padding: '1px 8px', borderRadius: '20px', background: 'rgba(108,99,255,0.1)', color: '#6c63ff' }}>{group.length}개</span>
+                          <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.06)' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {group.map((m) => (
+                            <div key={m.id} onClick={() => handleSelectMeeting(m.id)}
+                              style={{ background: '#1f2937', borderRadius: '12px', padding: '16px 20px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(108,99,255,0.3)')}
+                              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div>
+                                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#e8e8f0', marginBottom: '6px' }}>{m.title}</div>
+                                  <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#6b6b80' }}>
+                                    <span>📅 {m.meetingDate}</span>
+                                    <span>✍️ {m.authorNickname}</span>
+                                    {m.actionItemCount > 0 && <span style={{ color: '#a78bfa' }}>⚡ 액션 {m.actionItemCount}개</span>}
+                                    {m.decisionCount > 0 && <span style={{ color: '#4ade80' }}>✅ 결정 {m.decisionCount}개</span>}
+                                  </div>
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteMeeting(m.id) }} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', opacity: 0.6, padding: '0' }}>🗑</button>
+                              </div>
                             </div>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteMeeting(m.id) }} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', opacity: 0.6, padding: '0' }}>🗑</button>
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })
                 )}
               </>
             ) : (
