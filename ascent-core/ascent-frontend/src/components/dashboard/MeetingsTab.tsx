@@ -19,7 +19,12 @@ const TEMPLATES = [
   { icon: '🔍', label: '회고 회의',    content: '## 잘된 점 (Keep)\n\n## 개선할 점 (Problem)\n\n## 시도할 것 (Try)' },
 ]
 
-const emptyForm = () => ({ title: '', meetingDate: '', content: '', nextMeetingDate: '', attendeeIds: [] as number[], actionItems: [] as { title: string; assigneeId: number | null; dueDate: string }[], decisions: [] as string[] })
+const emptyForm = () => ({
+  title: '', meetingDate: '', content: '', nextMeetingDate: '',
+  attendeeIds: [] as number[],
+  actionItems: [] as { title: string; assigneeId: number | null; dueDate: string }[],
+  decisions: [] as string[],
+})
 
 export default function MeetingsTab({ projectId, meetings, setMeetings, setCards, members }: Props) {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
@@ -27,6 +32,8 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
   const [form, setForm] = useState(emptyForm())
   const [newActionItem, setNewActionItem] = useState({ title: '', assigneeId: null as number | null, dueDate: '' })
   const [newDecision, setNewDecision] = useState('')
+  const [showContentPanel, setShowContentPanel] = useState(false)
+  const [panelDraft, setPanelDraft] = useState('')
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +78,18 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
     } catch { alert('삭제 실패') }
   }
 
+  // 사이드패널 열기 — 현재 content 값을 draft에 복사
+  const openContentPanel = () => {
+    setPanelDraft(form.content)
+    setShowContentPanel(true)
+  }
+
+  // 사이드패널 저장
+  const saveContentPanel = () => {
+    setForm(prev => ({ ...prev, content: panelDraft }))
+    setShowContentPanel(false)
+  }
+
   const grouped = Object.entries(
     meetings.reduce((acc, m) => {
       const key = m.meetingDate.slice(0, 7)
@@ -82,6 +101,11 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+      <style>{`
+        @keyframes slideInRight { from { transform: translateX(100%) } to { transform: translateX(0) } }
+        @keyframes slideOutRight { from { transform: translateX(0) } to { transform: translateX(100%) } }
+      `}</style>
+
       <div style={{ maxWidth: '900px', margin: '0 auto', display: 'grid', gap: '20px' }}>
         {!selectedMeeting ? (
           <>
@@ -223,8 +247,10 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
 
       {/* 회의록 작성 모달 */}
       {showForm && (
-        <div onClick={() => setShowForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, overflowY: 'auto', padding: '24px', animation: 'fadeIn 0.2s ease' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '600px', margin: 'auto', animation: 'fadeUp 0.25s ease' }}>
+        <div onClick={() => { setShowForm(false); setShowContentPanel(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, overflowY: 'auto', padding: '24px', animation: 'fadeIn 0.2s ease' }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '600px', margin: 'auto', animation: 'fadeUp 0.25s ease' }}>
             <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '18px', fontWeight: 700, marginBottom: '24px' }}>📝 회의록 작성</h2>
             <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -244,6 +270,8 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
                     style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: form.nextMeetingDate ? '#e8e8f0' : '#6b6b80', fontSize: '14px', colorScheme: 'dark', outline: 'none' }} />
                 </div>
               </div>
+
+              {/* 참석자 */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>참석자</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -256,11 +284,28 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
                   ))}
                 </div>
               </div>
+
+              {/* 회의 내용 + 크게 작성 버튼 */}
               <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>회의 내용</label>
-                <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} placeholder="회의 내용을 입력하세요..."
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', color: '#9090a8', textTransform: 'uppercase', letterSpacing: '0.3px' }}>회의 내용</label>
+                  <button type="button" onClick={openContentPanel}
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 10px', fontSize: '11px', fontWeight: 600, background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.25)', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', transition: 'all 0.15s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.2)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.1)' }}>
+                    ✏️ 크게 작성
+                  </button>
+                </div>
+                <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={4} placeholder="회의 내용을 입력하거나 '크게 작성'을 눌러 편하게 작성하세요..."
                   style={{ width: '100%', padding: '10px 14px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#e8e8f0', fontSize: '14px', resize: 'none', fontFamily: 'inherit', lineHeight: 1.6, outline: 'none' }} />
+                {form.content && (
+                  <div style={{ marginTop: '4px', fontSize: '11px', color: '#6b6b80' }}>
+                    {form.content.length}자 입력됨
+                  </div>
+                )}
               </div>
+
+              {/* 결정 사항 */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>결정 사항</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
@@ -279,6 +324,8 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
                     style={{ padding: '8px 14px', fontSize: '12px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '8px', color: '#4ade80', cursor: 'pointer', fontWeight: 600 }}>+ 추가</button>
                 </div>
               </div>
+
+              {/* 액션 아이템 */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#9090a8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>액션 아이템</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
@@ -310,13 +357,85 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
                     style={{ padding: '8px 14px', fontSize: '12px', background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ 추가</button>
                 </div>
               </div>
+
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setShowForm(false)} style={{ padding: '10px 20px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>취소</button>
+                <button type="button" onClick={() => { setShowForm(false); setShowContentPanel(false) }} style={{ padding: '10px 20px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>취소</button>
                 <button type="submit" style={{ padding: '10px 24px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}>저장</button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* 회의 내용 사이드패널 */}
+      {showContentPanel && (
+        <>
+          {/* 딤 오버레이 (사이드패널 뒤, 모달 앞) */}
+          <div onClick={() => setShowContentPanel(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 250, animation: 'fadeIn 0.2s ease' }} />
+
+          {/* 사이드패널 */}
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0,
+            width: '42%', minWidth: '360px',
+            background: '#1a1f2e',
+            borderLeft: '1px solid rgba(108,99,255,0.25)',
+            boxShadow: '-8px 0 40px rgba(0,0,0,0.5)',
+            zIndex: 300,
+            display: 'flex', flexDirection: 'column',
+            animation: 'slideInRight 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}>
+            {/* 패널 헤더 */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: 700, fontFamily: "'Syne', sans-serif", color: '#e8e8f0' }}>✏️ 회의 내용 작성</div>
+                <div style={{ fontSize: '11px', color: '#6b6b80', marginTop: '2px' }}>자유롭게 작성 후 저장하세요</div>
+              </div>
+              <button onClick={() => setShowContentPanel(false)}
+                style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#9090a8', cursor: 'pointer', fontSize: '16px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+
+            {/* 단축키 힌트 */}
+            <div style={{ padding: '10px 24px', background: 'rgba(108,99,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', gap: '16px', flexShrink: 0 }}>
+              {[['##', '제목'], ['**텍스트**', '굵게'], ['- ', '목록'], ['> ', '인용']].map(([key, desc]) => (
+                <span key={key} style={{ fontSize: '11px', color: '#6b6b80' }}>
+                  <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '4px', color: '#a78bfa', fontSize: '10px' }}>{key}</code>
+                  {' '}{desc}
+                </span>
+              ))}
+            </div>
+
+            {/* 텍스트 에디터 */}
+            <textarea
+              value={panelDraft}
+              onChange={(e) => setPanelDraft(e.target.value)}
+              autoFocus
+              placeholder={'회의 내용을 자유롭게 작성하세요...\n\n## 진행 사항\n\n## 논의 사항\n\n## 결론'}
+              style={{
+                flex: 1, padding: '24px', resize: 'none',
+                background: 'transparent', border: 'none', outline: 'none',
+                color: '#e8e8f0', fontSize: '14px', lineHeight: 1.8,
+                fontFamily: "'DM Sans', 'Noto Sans KR', sans-serif",
+                overflowY: 'auto',
+              }}
+            />
+
+            {/* 패널 푸터 */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontSize: '12px', color: '#6b6b80' }}>{panelDraft.length}자</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setShowContentPanel(false)}
+                  style={{ padding: '8px 16px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#9090a8', cursor: 'pointer' }}>
+                  취소
+                </button>
+                <button onClick={saveContentPanel}
+                  style={{ padding: '8px 20px', fontSize: '13px', fontWeight: 600, background: 'linear-gradient(135deg, #6c63ff, #5a54e8)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 2px 8px rgba(108,99,255,0.4)' }}>
+                  ✓ 적용
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
