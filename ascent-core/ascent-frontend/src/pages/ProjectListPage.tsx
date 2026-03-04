@@ -71,8 +71,9 @@ export default function ProjectListPage() {
   const handleInviteCode = async (projectId: number) => {
     try {
       const res = await createInviteCode(projectId)
-      navigator.clipboard.writeText(res.data.code)
-      alert(`초대 코드 복사됨!\n${res.data.code}`)
+      const code = res.data.data.code
+      navigator.clipboard.writeText(code)
+      alert(`초대 코드가 클립보드에 복사됐어요! 🎉\n\n${code}`)
     } catch { alert('초대 코드 생성 실패 (OWNER만 가능)') }
   }
 
