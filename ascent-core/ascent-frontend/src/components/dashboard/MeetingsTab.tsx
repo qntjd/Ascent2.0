@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import MeetingPdfExport from './MeetingPdfExport'
 import { getMeeting, createMeeting, linkActionItemToKanban, deleteMeeting } from '../../api/meeting'
 import { getCards } from '../../api/kanban'
 import type { Meeting, MeetingSummary } from '../../api/meeting'
@@ -177,6 +178,7 @@ export default function MeetingsTab({ projectId, meetings, setMeetings, setCards
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <button onClick={() => setSelectedMeeting(null)} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#9090a8', cursor: 'pointer', padding: '6px 12px', fontSize: '13px' }}>← 목록</button>
               <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: '17px', fontWeight: 700, flex: 1 }}>{selectedMeeting.title}</h2>
+              <MeetingPdfExport meeting={selectedMeeting} />
               <button onClick={() => handleDelete(selectedMeeting.id)} style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', opacity: 0.6 }}>🗑 삭제</button>
             </div>
             <div style={{ background: '#1f2937', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.06)' }}>
