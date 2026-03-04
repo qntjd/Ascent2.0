@@ -44,7 +44,7 @@ public class MeetingService {
     // actionItems + decisions 로드 (2차 쿼리) — 같은 영속성 컨텍스트라 merge됨
     meetingRepository.findByIdWithItems(meetingId);
     return new MeetingResponse(meeting);
-}
+    }
 
     @Transactional
     public MeetingResponse createMeeting(Long projectId, Long userId, MeetingCreateRequest request) {
@@ -88,7 +88,10 @@ public class MeetingService {
     public MeetingResponse linkActionItemToKanban(Long projectId, Long meetingId, Long actionItemId, Long userId) {
         checkMember(projectId, userId);
 
-        Meeting meeting = meetingRepository.findByIdWithAttendees(meetingId)
+        // attendees + actionItems + decisions 모두 로드
+        meetingRepository.findByIdWithAttendees(meetingId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        Meeting meeting = meetingRepository.findByIdWithItems(meetingId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
         MeetingActionItem actionItem = meeting.getActionItems().stream()
