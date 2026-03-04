@@ -38,12 +38,11 @@ public class MeetingService {
     }
 
     public MeetingResponse getMeeting(Long meetingId) {
-    // attendees 먼저 로드 (1차 쿼리)
-    Meeting meeting = meetingRepository.findByIdWithAttendees(meetingId)
-            .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
-    // actionItems + decisions 로드 (2차 쿼리) — 같은 영속성 컨텍스트라 merge됨
-    meetingRepository.findByIdWithItems(meetingId);
-    return new MeetingResponse(meeting);
+        meetingRepository.findByIdWithAttendees(meetingId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        Meeting meeting = meetingRepository.findByIdWithItems(meetingId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        return new MeetingResponse(meeting);
     }
 
     @Transactional
