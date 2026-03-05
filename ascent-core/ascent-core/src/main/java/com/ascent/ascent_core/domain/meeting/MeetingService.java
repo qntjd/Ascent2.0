@@ -40,7 +40,9 @@ public class MeetingService {
     public MeetingResponse getMeeting(Long meetingId) {
         meetingRepository.findByIdWithAttendees(meetingId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
-        Meeting meeting = meetingRepository.findByIdWithItems(meetingId)
+        meetingRepository.findByIdWithActionItems(meetingId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        Meeting meeting = meetingRepository.findByIdWithDecisions(meetingId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
         return new MeetingResponse(meeting);
     }
@@ -89,9 +91,12 @@ public class MeetingService {
 
         // attendees + actionItems + decisions 모두 로드
         meetingRepository.findByIdWithAttendees(meetingId)
+        .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+        meetingRepository.findByIdWithActionItems(meetingId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
-        Meeting meeting = meetingRepository.findByIdWithItems(meetingId)
+        Meeting meeting = meetingRepository.findByIdWithDecisions(meetingId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+
 
         MeetingActionItem actionItem = meeting.getActionItems().stream()
                 .filter(item -> item.getId().equals(actionItemId))
