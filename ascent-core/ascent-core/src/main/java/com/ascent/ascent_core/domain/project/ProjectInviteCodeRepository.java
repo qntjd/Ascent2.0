@@ -10,6 +10,6 @@ public interface ProjectInviteCodeRepository extends JpaRepository<ProjectInvite
 
     Optional<ProjectInviteCode> findByCode(String code);
 
-    @Query("SELECT p FROM ProjectInviteCode p WHERE p.project.id = :projectId AND p.active = true ORDER BY p.expiresAt DESC")
+    @Query("SELECT p FROM ProjectInviteCode p WHERE p.project.id = :projectId AND p.active = true ORDER BY p.expiresAt DESC LIMIT 1")
     Optional<ProjectInviteCode> findActiveByProjectId(@Param("projectId") Long projectId);
 }
