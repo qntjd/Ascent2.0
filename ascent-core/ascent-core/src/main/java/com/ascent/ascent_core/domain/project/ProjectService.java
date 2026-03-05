@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -126,9 +127,16 @@ public class ProjectService {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
+        // 기존 유효한 코드가 있으면 재사용
+        Optional<ProjectInviteCode> existing = projectInviteCodeRepository
+                .findActiveByProjectId(projectId);
+        if (existing.isPresent() && !existing.get().isExpired()) {
+            return new InviteCodeResponse(existing.get());
+        }
+
+        // 없거나 만료됐으면 새로 생성
         ProjectInviteCode inviteCode = ProjectInviteCode.create(project);
         projectInviteCodeRepository.save(inviteCode);
-
         return new InviteCodeResponse(inviteCode);
     }
 
