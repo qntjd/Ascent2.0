@@ -47,6 +47,10 @@ export interface ChatRoom {
 
 // 채팅 메시지
 export interface ChatMessage {
+  senderNickname?: string
+  messageType?: 'TEXT' | 'FILE'
+  fileUrl?: string | null
+  fileName?: string | null
   id: number
   roomId: number
   senderId: number

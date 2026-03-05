@@ -30,8 +30,18 @@ public class ChatMessage {
     @JoinColumn(name = "sender_id", nullable = false)
     private User sender;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private MessageType messageType = MessageType.TEXT;
+
     @Column(nullable = false, length = 2000)
     private String content;
+
+    @Column(length = 500)
+    private String fileUrl;
+
+    @Column(length = 200)
+    private String fileName;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -40,7 +50,20 @@ public class ChatMessage {
         ChatMessage m = new ChatMessage();
         m.room = room;
         m.sender = sender;
+        m.messageType = MessageType.TEXT;
         m.content = content;
+        m.createdAt = LocalDateTime.now();
+        return m;
+    }
+
+    public static ChatMessage createFile(ChatRoom room, User sender, String fileUrl, String fileName) {
+        ChatMessage m = new ChatMessage();
+        m.room = room;
+        m.sender = sender;
+        m.messageType = MessageType.FILE;
+        m.content = fileName; // 파일명을 content에도 저장 (하위 호환)
+        m.fileUrl = fileUrl;
+        m.fileName = fileName;
         m.createdAt = LocalDateTime.now();
         return m;
     }

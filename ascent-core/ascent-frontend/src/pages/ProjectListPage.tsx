@@ -246,7 +246,7 @@ export default function ProjectListPage() {
                     background: 'linear-gradient(135deg, #6c63ff, #5a54e8)',
                     border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer',
                     boxShadow: '0 2px 8px rgba(108,99,255,0.3)',
-                  }}>채팅방 →</button>
+                  }}>대시보드 →</button>
                 </div>
               </div>
             ))}

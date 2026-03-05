@@ -47,6 +47,17 @@ public class ChatController {
         return ResponseEntity.ok(ApiResponse.success(chatService.getMessages(projectId, userId, cursorId, pageable)));
     }
 
+    @PostMapping("/messages/file")
+    public ResponseEntity<ApiResponse<ChatMessageResponse>> sendFile(
+            @PathVariable Long projectId,
+            @AuthenticationPrincipal(expression = "id") Long userId,
+            @RequestParam String fileUrl,
+            @RequestParam String fileName
+    ) {
+        ChatMessageResponse response = chatService.sendFileMessage(projectId, userId, fileUrl, fileName);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }   
+
     // ───────────── 채팅방 ─────────────
 
     /** 특정 프로젝트의 채팅방 단건 조회 */

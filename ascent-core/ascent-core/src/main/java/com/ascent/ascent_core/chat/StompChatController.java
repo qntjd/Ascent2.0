@@ -1,5 +1,6 @@
 package com.ascent.ascent_core.chat;
 
+import com.ascent.ascent_core.chat.dto.ChatFileMessageRequest;
 import com.ascent.ascent_core.chat.dto.ChatMessageCreateRequest;
 import com.ascent.ascent_core.chat.dto.ChatMessageResponse;
 import jakarta.validation.Valid;
@@ -30,6 +31,19 @@ public class StompChatController {
         ChatMessageResponse response = chatService.sendMessage(projectId, userId, request);
 
         
+        messagingTemplate.convertAndSend("/topic/chat/" + projectId, response);
+    }
+
+    @MessageMapping("/chat/{projectId}/file")
+    public void sendFileMessage(
+            @DestinationVariable Long projectId,
+            @Payload ChatFileMessageRequest request,
+            Authentication authentication
+    ) {
+        Long userId = (Long) authentication.getPrincipal();
+
+        ChatMessageResponse response = chatService.sendFileMessage(projectId, userId, request.getFileUrl(), request.getFileName());
+
         messagingTemplate.convertAndSend("/topic/chat/" + projectId, response);
     }
 }

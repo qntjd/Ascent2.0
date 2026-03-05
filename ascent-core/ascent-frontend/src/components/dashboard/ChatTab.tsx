@@ -56,13 +56,25 @@ export default function ChatTab({ projectId, messages, setMessages, setFiles }: 
     if (!file) return
     setUploading(true)
     try {
+      // 1. Cloudinary에 파일 업로드
       const res = await uploadFile(projectId, file)
-      setFiles((prev) => [res.data.data, ...prev])
+      const uploaded = res.data.data
+      setFiles((prev) => [uploaded, ...prev])
+
+      // 2. WebSocket으로 파일 메시지 브로드캐스트
+      if (clientRef.current?.connected) {
+        clientRef.current.publish({
+          destination: `/app/chat/${projectId}/file`,
+          body: JSON.stringify({ fileUrl: uploaded.url, fileName: uploaded.originalName }),
+        })
+      }
     } catch { alert('파일 업로드 실패') }
     finally { setUploading(false); if (e.target) e.target.value = '' }
   }
 
   const isSameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString()
+
+  const isImage = (fileName: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -75,6 +87,9 @@ export default function ChatTab({ projectId, messages, setMessages, setFiles }: 
         ) : messages.map((msg, i) => {
           const showDate = i === 0 || !isSameDay(messages[i - 1].createdAt, msg.createdAt)
           const showAvatar = i === 0 || messages[i - 1].senderEmail !== msg.senderEmail || showDate
+          const isFile = msg.messageType === 'FILE'
+          const isImg = isFile && msg.fileName && isImage(msg.fileName)
+
           return (
             <div key={msg.id}>
               {showDate && (
@@ -95,13 +110,39 @@ export default function ChatTab({ projectId, messages, setMessages, setFiles }: 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {showAvatar && (
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: avatarColor(msg.senderEmail) }}>{msg.senderEmail.split('@')[0]}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: avatarColor(msg.senderEmail) }}>
+                        {msg.senderNickname || msg.senderEmail.split('@')[0]}
+                      </span>
                       <span style={{ fontSize: '11px', color: '#6b6b80' }}>{formatTime(msg.createdAt)}</span>
                     </div>
                   )}
-                  <div style={{ display: 'inline-block', background: '#1f2937', border: '1px solid rgba(255,255,255,0.06)', borderRadius: showAvatar ? '4px 12px 12px 12px' : '12px', padding: '8px 14px', fontSize: '14px', lineHeight: '1.5', color: '#d1d5db', maxWidth: '520px', wordBreak: 'break-word' }}>
-                    {msg.content}
-                  </div>
+
+                  {/* 이미지 메시지 */}
+                  {isImg && msg.fileUrl && (
+                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">
+                      <img src={msg.fileUrl} alt={msg.fileName ?? '이미지'}
+                        style={{ maxWidth: '320px', maxHeight: '240px', borderRadius: '10px', display: 'block', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', objectFit: 'cover' }} />
+                    </a>
+                  )}
+
+                  {/* 일반 파일 메시지 */}
+                  {isFile && !isImg && msg.fileUrl && (
+                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', background: '#1f2937', border: '1px solid rgba(108,99,255,0.2)', borderRadius: showAvatar ? '4px 12px 12px 12px' : '12px', padding: '10px 14px', textDecoration: 'none', maxWidth: '320px' }}>
+                      <span style={{ fontSize: '22px' }}>📎</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', color: '#e8e8f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{msg.fileName}</div>
+                        <div style={{ fontSize: '11px', color: '#6c63ff', marginTop: '2px' }}>클릭해서 열기 →</div>
+                      </div>
+                    </a>
+                  )}
+
+                  {/* 텍스트 메시지 */}
+                  {!isFile && (
+                    <div style={{ display: 'inline-block', background: '#1f2937', border: '1px solid rgba(255,255,255,0.06)', borderRadius: showAvatar ? '4px 12px 12px 12px' : '12px', padding: '8px 14px', fontSize: '14px', lineHeight: '1.5', color: '#d1d5db', maxWidth: '520px', wordBreak: 'break-word' }}>
+                      {msg.content}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -109,13 +150,15 @@ export default function ChatTab({ projectId, messages, setMessages, setFiles }: 
         })}
         <div ref={bottomRef} />
       </div>
+
+      {/* 입력창 */}
       <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1f2937', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '6px 6px 6px 12px' }}>
           <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-            style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '18px', padding: '4px', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+            style={{ background: 'transparent', border: 'none', color: uploading ? '#6c63ff' : '#6b6b80', cursor: 'pointer', fontSize: '18px', padding: '4px', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#6c63ff')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#6b6b80')}>
+            onMouseLeave={e => { if (!uploading) e.currentTarget.style.color = '#6b6b80' }}>
             {uploading ? '⏳' : '📎'}
           </button>
           <input type="text" value={input} onChange={(e) => setInput(e.target.value)}

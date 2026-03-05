@@ -51,6 +51,24 @@ public class ChatService {
         return new ChatMessageResponse(message);
     }
 
+    @Transactional
+    public ChatMessageResponse sendFileMessage(Long projectId, Long userId, String fileUrl, String fileName) {
+
+        projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
+
+        ChatRoom room = chatRoomRepository.findByProjectId(projectId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        User sender = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        ChatMessage message = ChatMessage.createFile(room, sender, fileUrl, fileName);
+        chatMessageRepository.save(message);
+
+        return new ChatMessageResponse(message);
+}
+
     
     public Page<ChatMessageResponse> getMessages(Long projectId, Long userId, Long cursorId, Pageable pageable) {
 
