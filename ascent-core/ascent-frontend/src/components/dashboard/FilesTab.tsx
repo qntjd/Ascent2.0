@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { uploadFile, deleteFile } from '../../api/file'
 import type { ProjectFile } from '../../api/file'
 import { formatDate } from './shared'
+import api from '../../api/axios'
 
 interface Props {
   projectId: number
@@ -47,18 +48,19 @@ export default function FilesTab({ projectId, files, setFiles }: Props) {
     } catch { alert('삭제 실패') }
   }
 
-  const handleDownload = async (url: string, fileName: string) => {
+  const handleDownload = async (fileId: number, fileName: string) => {
     try {
-      const res = await fetch(url)
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
+      const res = await api.get(`/projects/${projectId}/files/${fileId}/download`, {
+        responseType: 'blob'
+      })
+      const blobUrl = URL.createObjectURL(res.data)
       const a = document.createElement('a')
       a.href = blobUrl
       a.download = fileName
       a.click()
       URL.revokeObjectURL(blobUrl)
     } catch {
-      window.open(url, '_blank')
+      alert('다운로드 실패')
     }
   }
 
@@ -97,7 +99,7 @@ export default function FilesTab({ projectId, files, setFiles }: Props) {
                       {formatSize(file.fileSize)} · {file.uploaderNickname} · {formatDate(file.createdAt)}
                     </div>
                   </div>
-                  <button onClick={() => handleDownload(file.url, file.originalName)}
+                  <button onClick={() => handleDownload(file.id, file.originalName)}
                     style={{ background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: '6px', color: '#6c63ff', fontSize: '12px', padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
                     다운로드
                   </button>

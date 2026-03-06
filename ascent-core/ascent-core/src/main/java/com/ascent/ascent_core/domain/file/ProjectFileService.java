@@ -11,11 +11,17 @@ import com.ascent.ascent_core.domain.user.UserRepository;
 import com.ascent.ascent_core.global.exception.CustomException;
 import com.ascent.ascent_core.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -73,7 +79,7 @@ public class ProjectFileService {
             String uploadedResourceType = (String) uploadResult.get("resource_type");
             String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
-            // raw 타입(PDF 등)인 경우 URL에 확장자가 빠질 수 있어서 강제로 추가
+            // raw 타입인 경우 URL에 확장자 추가
             if ("raw".equals(resourceType) && file.getOriginalFilename() != null) {
                 String originalName = file.getOriginalFilename();
                 if (originalName.contains(".")) {
@@ -96,6 +102,28 @@ public class ProjectFileService {
         } catch (IOException e) {
             throw new RuntimeException("파일 업로드 실패", e);
         }
+    }
+
+    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws IOException {
+        projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
+
+        ProjectFile file = projectFileRepository.findById(fileId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
+
+        URL url = new URL(file.getUrl());
+        byte[] bytes = url.openStream().readAllBytes();
+        ByteArrayResource resource = new ByteArrayResource(bytes);
+
+        String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
+        String fileName = file.getOriginalName() != null ? file.getOriginalName() : "download";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .contentLength(bytes.length)
+                .body(resource);
     }
 
     @Transactional
