@@ -47,6 +47,21 @@ export default function FilesTab({ projectId, files, setFiles }: Props) {
     } catch { alert('삭제 실패') }
   }
 
+  const handleDownload = async (url: string, fileName: string) => {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = fileName
+      a.click()
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, '_blank')
+    }
+  }
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
@@ -75,18 +90,17 @@ export default function FilesTab({ projectId, files, setFiles }: Props) {
                   onMouseLeave={e => (e.currentTarget.style.background = '#111827')}>
                   <div style={{ fontSize: '24px', flexShrink: 0 }}>{getIcon(file.fileType)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <a href={file.url} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: '14px', fontWeight: 500, color: '#e8e8f0', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#e8e8f0', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {file.originalName}
-                    </a>
+                    </span>
                     <div style={{ fontSize: '11px', color: '#6b6b80', marginTop: '2px' }}>
                       {formatSize(file.fileSize)} · {file.uploaderNickname} · {formatDate(file.createdAt)}
                     </div>
                   </div>
-                  <a href={file.url} target="_blank" rel="noopener noreferrer"
-                    style={{ background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: '6px', color: '#6c63ff', fontSize: '12px', padding: '4px 10px', textDecoration: 'none', flexShrink: 0 }}>
+                  <button onClick={() => handleDownload(file.url, file.originalName)}
+                    style={{ background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: '6px', color: '#6c63ff', fontSize: '12px', padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
                     다운로드
-                  </a>
+                  </button>
                   <button onClick={() => handleDelete(file.id)}
                     style={{ background: 'transparent', border: 'none', color: '#6b6b80', cursor: 'pointer', fontSize: '14px', padding: '4px', opacity: 0.6, flexShrink: 0 }}>🗑</button>
                 </div>
