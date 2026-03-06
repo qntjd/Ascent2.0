@@ -55,7 +55,8 @@ public class ProjectFileService {
                     file.getBytes(),
                     ObjectUtils.asMap(
                             "folder", "ascent/" + projectId,
-                            "resource_type", "auto"
+                            "resource_type", "auto",
+                            "type", "upload"
                     )
             );
 
