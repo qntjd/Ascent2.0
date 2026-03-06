@@ -62,7 +62,9 @@ public class ProjectFileService {
                             "folder", "ascent/" + projectId,
                             "resource_type", resourceType,
                             "type", "upload",
-                            "access_mode", "public"
+                            "access_mode", "public",
+                            "use_filename", true,
+                            "unique_filename", true
                     )
             );
 
@@ -70,6 +72,17 @@ public class ProjectFileService {
             String publicId = (String) uploadResult.get("public_id");
             String uploadedResourceType = (String) uploadResult.get("resource_type");
             String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+
+            // raw 타입(PDF 등)인 경우 URL에 확장자가 빠질 수 있어서 강제로 추가
+            if ("raw".equals(resourceType) && file.getOriginalFilename() != null) {
+                String originalName = file.getOriginalFilename();
+                if (originalName.contains(".")) {
+                    String ext = originalName.substring(originalName.lastIndexOf('.'));
+                    if (!url.endsWith(ext)) {
+                        url = url + ext;
+                    }
+                }
+            }
 
             ProjectFile projectFile = ProjectFile.create(
                     project, uploader,
