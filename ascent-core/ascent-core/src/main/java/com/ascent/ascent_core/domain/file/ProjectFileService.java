@@ -50,26 +50,31 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         try {
+            String resourceType = "auto";
+            if (file.getContentType() != null && file.getContentType().equals("application/pdf")) {
+                resourceType = "raw";
+            }
+
             @SuppressWarnings("unchecked")
             Map<String, Object> uploadResult = cloudinary.uploader().upload(
                     file.getBytes(),
                     ObjectUtils.asMap(
                             "folder", "ascent/" + projectId,
-                            "resource_type", "auto",
-                            "type", "upload"
+                            "resource_type", resourceType,
+                            "type", "upload",
+                            "access_mode", "public"
                     )
             );
 
             String url = (String) uploadResult.get("secure_url");
             String publicId = (String) uploadResult.get("public_id");
-            // 업로드 결과에서 실제 resource_type 저장
-            String resourceType = (String) uploadResult.get("resource_type");
+            String uploadedResourceType = (String) uploadResult.get("resource_type");
             String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
             ProjectFile projectFile = ProjectFile.create(
                     project, uploader,
                     file.getOriginalFilename(),
-                    url, publicId, fileType, resourceType, file.getSize()
+                    url, publicId, fileType, uploadedResourceType, file.getSize()
             );
 
             projectFileRepository.save(projectFile);
@@ -89,7 +94,6 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
         try {
-            // 저장된 resource_type으로 삭제
             String resourceType = file.getResourceType() != null ? file.getResourceType() : "image";
             cloudinary.uploader().destroy(file.getPublicId(), ObjectUtils.asMap("resource_type", resourceType));
         } catch (IOException e) {
