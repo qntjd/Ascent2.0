@@ -104,23 +104,35 @@ public class ProjectFileService {
         }
     }
 
-    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws IOException {
+    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws Exception {
         projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
 
         ProjectFile file = projectFileRepository.findById(fileId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
-        URL url = new URL(file.getUrl());
+        String originalName = file.getOriginalName();
+        String ext = originalName.contains(".")
+                ? originalName.substring(originalName.lastIndexOf('.') + 1)
+                : "bin";
+
+        // Cloudinary 서명된 URL 생성
+        @SuppressWarnings("unchecked")
+        String signedUrl = cloudinary.privateDownload(
+                file.getPublicId(),
+                ext,
+                ObjectUtils.emptyMap()
+        );
+
+        URL url = new URL(signedUrl);
         byte[] bytes = url.openStream().readAllBytes();
         ByteArrayResource resource = new ByteArrayResource(bytes);
 
         String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
-        String fileName = file.getOriginalName() != null ? file.getOriginalName() : "download";
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + fileName + "\"")
+                        "attachment; filename=\"" + originalName + "\"")
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(bytes.length)
                 .body(resource);

@@ -44,7 +44,7 @@ public class ProjectFileController {
             @PathVariable Long projectId,
             @PathVariable Long fileId,
             @AuthenticationPrincipal(expression = "id") Long userId
-    ) throws IOException {
+    ) throws Exception {
         return projectFileService.downloadFile(projectId, fileId, userId);
     }
 
