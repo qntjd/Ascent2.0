@@ -10,17 +10,16 @@ import com.ascent.ascent_core.domain.user.User;
 import com.ascent.ascent_core.domain.user.UserRepository;
 import com.ascent.ascent_core.global.exception.CustomException;
 import com.ascent.ascent_core.global.exception.ErrorCode;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Base64;
@@ -106,17 +105,18 @@ public class ProjectFileService {
         }
     }
 
-    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws IOException {
+    public void downloadFile(Long projectId, Long fileId, Long userId,
+                             HttpServletResponse response) throws IOException {
         projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
 
         ProjectFile file = projectFileRepository.findById(fileId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
-        String originalName = file.getOriginalName();
         String fileUrl = file.getUrl();
+        String originalName = file.getOriginalName();
+        String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
 
-        // Cloudinary Basic Auth로 다운로드
         HttpURLConnection connection = (HttpURLConnection) new URL(fileUrl).openConnection();
         connection.setRequestMethod("GET");
         String apiKey = String.valueOf(cloudinary.config.apiKey);
@@ -124,17 +124,13 @@ public class ProjectFileService {
         String encodedAuth = Base64.getEncoder().encodeToString((apiKey + ":" + apiSecret).getBytes());
         connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
 
-        byte[] bytes = connection.getInputStream().readAllBytes();
-        ByteArrayResource resource = new ByteArrayResource(bytes);
+        response.setContentType(contentType);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + originalName + "\"");
 
-        String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + originalName + "\"")
-                .contentType(MediaType.parseMediaType(contentType))
-                .contentLength(bytes.length)
-                .body(resource);
+        try (InputStream in = connection.getInputStream();
+             OutputStream out = response.getOutputStream()) {
+            in.transferTo(out);
+        }
     }
 
     @Transactional

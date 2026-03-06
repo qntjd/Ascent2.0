@@ -2,8 +2,8 @@ package com.ascent.ascent_core.domain.file;
 
 import com.ascent.ascent_core.domain.file.dto.ProjectFileResponse;
 import com.ascent.ascent_core.global.response.ApiResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -38,14 +38,15 @@ public class ProjectFileController {
         return ResponseEntity.ok(ApiResponse.success(projectFileService.uploadFile(projectId, userId, file)));
     }
 
-    // 파일 다운로드 (백엔드 프록시)
+    // 파일 다운로드 (스트리밍)
     @GetMapping("/{fileId}/download")
-    public ResponseEntity<Resource> download(
+    public void download(
             @PathVariable Long projectId,
             @PathVariable Long fileId,
-            @AuthenticationPrincipal(expression = "id") Long userId
-    ) throws Exception {
-        return projectFileService.downloadFile(projectId, fileId, userId);
+            @AuthenticationPrincipal(expression = "id") Long userId,
+            HttpServletResponse response
+    ) throws IOException {
+        projectFileService.downloadFile(projectId, fileId, userId, response);
     }
 
     // 파일 삭제
