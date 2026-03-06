@@ -21,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -104,7 +106,7 @@ public class ProjectFileService {
         }
     }
 
-    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws Exception {
+    public ResponseEntity<Resource> downloadFile(Long projectId, Long fileId, Long userId) throws IOException {
         projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
 
@@ -112,20 +114,17 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
 
         String originalName = file.getOriginalName();
-        String ext = originalName.contains(".")
-                ? originalName.substring(originalName.lastIndexOf('.') + 1)
-                : "bin";
+        String fileUrl = file.getUrl();
 
-        // Cloudinary 서명된 URL 생성
-        @SuppressWarnings("unchecked")
-        String signedUrl = cloudinary.privateDownload(
-                file.getPublicId(),
-                ext,
-                ObjectUtils.emptyMap()
-        );
+        // Cloudinary Basic Auth로 다운로드
+        HttpURLConnection connection = (HttpURLConnection) new URL(fileUrl).openConnection();
+        connection.setRequestMethod("GET");
+        String apiKey = String.valueOf(cloudinary.config.apiKey);
+        String apiSecret = String.valueOf(cloudinary.config.apiSecret);
+        String encodedAuth = Base64.getEncoder().encodeToString((apiKey + ":" + apiSecret).getBytes());
+        connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
 
-        URL url = new URL(signedUrl);
-        byte[] bytes = url.openStream().readAllBytes();
+        byte[] bytes = connection.getInputStream().readAllBytes();
         ByteArrayResource resource = new ByteArrayResource(bytes);
 
         String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
