@@ -2,7 +2,6 @@ package com.ascent.ascent_core.domain.file;
 
 import com.ascent.ascent_core.domain.file.dto.ProjectFileResponse;
 import com.ascent.ascent_core.global.response.ApiResponse;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -10,7 +9,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -36,17 +34,6 @@ public class ProjectFileController {
             @RequestParam("file") MultipartFile file
     ) {
         return ResponseEntity.ok(ApiResponse.success(projectFileService.uploadFile(projectId, userId, file)));
-    }
-
-    // 파일 다운로드 (스트리밍)
-    @GetMapping("/{fileId}/download")
-    public void download(
-            @PathVariable Long projectId,
-            @PathVariable Long fileId,
-            @AuthenticationPrincipal(expression = "id") Long userId,
-            HttpServletResponse response
-    ) throws IOException {
-        projectFileService.downloadFile(projectId, fileId, userId, response);
     }
 
     // 파일 삭제

@@ -10,19 +10,12 @@ import com.ascent.ascent_core.domain.user.User;
 import com.ascent.ascent_core.domain.user.UserRepository;
 import com.ascent.ascent_core.global.exception.CustomException;
 import com.ascent.ascent_core.global.exception.ErrorCode;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -57,19 +50,13 @@ public class ProjectFileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         try {
-            String resourceType = "auto";
-            if (file.getContentType() != null && file.getContentType().equals("application/pdf")) {
-                resourceType = "raw";
-            }
-
             @SuppressWarnings("unchecked")
             Map<String, Object> uploadResult = cloudinary.uploader().upload(
                     file.getBytes(),
                     ObjectUtils.asMap(
                             "folder", "ascent/" + projectId,
-                            "resource_type", resourceType,
+                            "resource_type", "auto",
                             "type", "upload",
-                            "access_mode", "public",
                             "use_filename", true,
                             "unique_filename", true
                     )
@@ -79,17 +66,6 @@ public class ProjectFileService {
             String publicId = (String) uploadResult.get("public_id");
             String uploadedResourceType = (String) uploadResult.get("resource_type");
             String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-
-            // raw 타입인 경우 URL에 확장자 추가
-            if ("raw".equals(resourceType) && file.getOriginalFilename() != null) {
-                String originalName = file.getOriginalFilename();
-                if (originalName.contains(".")) {
-                    String ext = originalName.substring(originalName.lastIndexOf('.'));
-                    if (!url.endsWith(ext)) {
-                        url = url + ext;
-                    }
-                }
-            }
 
             ProjectFile projectFile = ProjectFile.create(
                     project, uploader,
@@ -102,34 +78,6 @@ public class ProjectFileService {
 
         } catch (IOException e) {
             throw new RuntimeException("파일 업로드 실패", e);
-        }
-    }
-
-    public void downloadFile(Long projectId, Long fileId, Long userId,
-                             HttpServletResponse response) throws IOException {
-        projectMemberRepository.findByProjectIdAndUserId(projectId, userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.FORBIDDEN));
-
-        ProjectFile file = projectFileRepository.findById(fileId)
-                .orElseThrow(() -> new CustomException(ErrorCode.PROJECT_NOT_FOUND));
-
-        String fileUrl = file.getUrl();
-        String originalName = file.getOriginalName();
-        String contentType = file.getFileType() != null ? file.getFileType() : "application/octet-stream";
-
-        HttpURLConnection connection = (HttpURLConnection) new URL(fileUrl).openConnection();
-        connection.setRequestMethod("GET");
-        String apiKey = String.valueOf(cloudinary.config.apiKey);
-        String apiSecret = String.valueOf(cloudinary.config.apiSecret);
-        String encodedAuth = Base64.getEncoder().encodeToString((apiKey + ":" + apiSecret).getBytes());
-        connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
-
-        response.setContentType(contentType);
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + originalName + "\"");
-
-        try (InputStream in = connection.getInputStream();
-             OutputStream out = response.getOutputStream()) {
-            in.transferTo(out);
         }
     }
 
