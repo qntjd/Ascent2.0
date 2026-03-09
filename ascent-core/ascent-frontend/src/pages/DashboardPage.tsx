@@ -17,17 +17,19 @@ import KanbanTab from '../components/dashboard/KanbanTab'
 import ScheduleTab from '../components/dashboard/ScheduleTab'
 import FilesTab from '../components/dashboard/FilesTab'
 import MeetingsTab from '../components/dashboard/MeetingsTab'
+import TimelineTab from '../components/dashboard/TimelineTab'
 import { avatarColor, TAG_COLORS } from '../components/dashboard/shared'
 
-type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files' | 'meetings'
+type Tab = 'dashboard' | 'chat' | 'kanban' | 'schedule' | 'files' | 'meetings' | 'timeline'
 
 const TAB_CONFIG: { key: Tab; label: string; icon: string }[] = [
   { key: 'dashboard', label: '대시보드', icon: '⊞' },
   { key: 'chat',      label: '채팅',     icon: '💬' },
-  { key: 'kanban',    label: '할일',     icon: '🗂️' },
+  { key: 'kanban',    label: '칸반',     icon: '🗂️' },
   { key: 'schedule',  label: '일정',     icon: '📅' },
-  { key: 'meetings',  label: '회의록',   icon: '📝' },
   { key: 'files',     label: '파일',     icon: '📎' },
+  { key: 'meetings',  label: '회의록',   icon: '📝' },
+  { key: 'timeline',  label: '타임라인', icon: '🕐' },
 ]
 
 export default function DashboardPage() {
@@ -252,6 +254,7 @@ export default function DashboardPage() {
       {tab === 'schedule' && <ScheduleTab projectId={pid} schedules={schedules} setSchedules={setSchedules} members={members} />}
       {tab === 'files'    && <FilesTab    projectId={pid} files={files} setFiles={setFiles} />}
       {tab === 'meetings' && <MeetingsTab projectId={pid} meetings={meetings} setMeetings={setMeetings} setCards={setCards} members={members} />}
+      {tab === 'timeline'  && <TimelineTab  schedules={schedules} meetings={meetings} members={members} />}
     </div>
   )
 }
